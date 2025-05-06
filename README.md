@@ -58,7 +58,58 @@ echo 'SHELL_DIR=./src/shell' >> .env
 4. Khởi động server:
 
 ```bash
+# Sử dụng Node.js
 npm start
+
+# Hoặc sử dụng nodemon cho phát triển
+npm run dev
+```
+
+### Chạy với PM2 (Đề xuất cho môi trường sản xuất)
+
+PM2 là một process manager cho ứng dụng Node.js, giúp đảm bảo ứng dụng luôn hoạt động, tự động khởi động lại khi gặp lỗi, và nhiều tính năng hữu ích khác.
+
+1. Cài đặt PM2 (đã được bao gồm trong `devDependencies`):
+
+```bash
+# Cài đặt toàn cục nếu cần
+npm install -g pm2
+```
+
+2. Khởi động ứng dụng với PM2:
+
+```bash
+# Khởi động trong môi trường phát triển
+npm run pm2:start
+
+# Khởi động trong môi trường sản xuất
+npm run pm2:start:prod
+```
+
+3. Các lệnh PM2 khác:
+
+```bash
+# Kiểm tra trạng thái ứng dụng
+npm run pm2:status
+
+# Xem log ứng dụng
+npm run pm2:logs
+
+# Khởi động lại ứng dụng
+npm run pm2:restart
+
+# Dừng ứng dụng
+npm run pm2:stop
+```
+
+4. Cấu hình tự động khởi động khi hệ thống khởi động:
+
+```bash
+pm2 startup
+# Thực hiện theo hướng dẫn hiển thị
+
+# Lưu cấu hình hiện tại
+pm2 save
 ```
 
 ### Cài đặt Shell Client
@@ -150,6 +201,55 @@ Các thông số cấu hình:
 - `SHELL_DIR`: Thư mục lưu trữ các script (mặc định: $HOME/.shellai)
 - `CLEANUP`: Tự động xóa file sau khi hoàn thành (mặc định: true)
 
+## Triển khai lên môi trường sản xuất
+
+### Triển khai API Server
+
+1. Chuẩn bị server:
+   - Cài đặt Node.js, npm và PM2
+   - Cài đặt Nginx (hoặc Apache) để làm reverse proxy
+
+2. Cấu hình Nginx làm reverse proxy cho API server:
+
+```nginx
+server {
+    listen 80;
+    server_name api.shellai.yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+3. Cấu hình SSL với Let's Encrypt:
+
+```bash
+sudo certbot --nginx -d api.shellai.yourdomain.com
+```
+
+4. Khởi động API server với PM2:
+
+```bash
+npm run pm2:start:prod
+pm2 startup
+pm2 save
+```
+
+### Triển khai Shell Client
+
+Chỉ cần cấu hình Shell Client để trỏ đến API server đã triển khai:
+
+```bash
+sudo ./shellai.sh config
+# Nhập URL: https://api.shellai.yourdomain.com/api/agent
+```
+
 ## Ví dụ thực tế
 
 ### 1. Cài đặt LAMP stack
@@ -188,6 +288,7 @@ shell.ai/
 │   ├── services/     # Các dịch vụ (OpenAI, file, ...)
 │   ├── shell/        # Thư mục chứa các script được tạo (khi chạy cùng với server)
 │   └── server.js     # Điểm vào của ứng dụng
+├── ecosystem.config.js # Cấu hình PM2
 ├── .env              # Biến môi trường
 ├── package.json      # Quản lý phụ thuộc
 ├── shellai.sh        # Script chính để người dùng tương tác
@@ -218,6 +319,15 @@ Shell.AI cần quyền sudo để thực thi nhiều loại tác vụ hệ thố
 ### 3. Tùy chỉnh prompt
 
 Nếu bạn muốn tùy chỉnh cách AI tạo script, bạn có thể chỉnh sửa file `src/controllers/agent.controller.js` và thay đổi prompt trong hàm `processIssue`.
+
+### 4. PM2 không giữ ứng dụng chạy sau khi khởi động lại server
+
+Đảm bảo bạn đã chạy các lệnh:
+
+```bash
+pm2 startup
+pm2 save
+```
 
 ## Đóng góp
 
