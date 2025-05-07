@@ -22,12 +22,14 @@ async function processIssue(req, res) {
     
     ${issue}
     
+    Lưu ý: Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết.
+    
     Hãy phản hồi dưới dạng JSON theo định dạng sau:
     [
       {
-        "filename": "tên_file.đuôi_file",
+        "filename": "tên_file.js",
         "content": "nội dung file",
-        "type": "loại file (sh, js, py, ...)",
+        "type": "js",
         "args": ["tham số 1", "tham số 2", ...],
         "description": "mô tả ngắn về tác dụng của file"
       },

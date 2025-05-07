@@ -46,18 +46,21 @@ async function executeFile(filePath, args = []) {
     const fileType = path.extname(filePath).replace('.', '');
     let command;
     
-    switch (fileType) {
-      case 'sh':
-        command = `bash "${filePath}" ${args.join(' ')}`;
-        break;
-      case 'js':
-        command = `node "${filePath}" ${args.join(' ')}`;
-        break;
-      case 'py':
-        command = `python3 "${filePath}" ${args.join(' ')}`;
-        break;
-      default:
-        command = `"${filePath}" ${args.join(' ')}`;
+    // Ưu tiên thực thi file JavaScript
+    if (fileType === 'js') {
+      command = `node "${filePath}" ${args.join(' ')}`;
+    } else {
+      // Các loại file khác
+      switch (fileType) {
+        case 'sh':
+          command = `bash "${filePath}" ${args.join(' ')}`;
+          break;
+        case 'py':
+          command = `python3 "${filePath}" ${args.join(' ')}`;
+          break;
+        default:
+          command = `"${filePath}" ${args.join(' ')}`;
+      }
     }
     
     console.log(`Thực thi lệnh: ${command}`);
