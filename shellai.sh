@@ -162,16 +162,16 @@ execute_script() {
     # Thực thi file
     echo "Đang thực thi file: $filename"
     case "$type" in
-        "js")
-            echo "Lệnh: node $filepath $args"
+        "js"|"javascript")
+            echo "node $filepath $args"
             node "$filepath" $args
             ;;
-        "sh")
-            echo "Lệnh: bash $filepath $args"
+        "sh"|"shell"|"bash")
+            echo "bash $filepath $args"
             bash "$filepath" $args
             ;;
-        "py")
-            echo "Lệnh: python3 $filepath $args"
+        "py"|"python")
+            echo "python3 $filepath $args"
             python3 "$filepath" $args
             ;;
         *)
