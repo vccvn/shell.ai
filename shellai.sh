@@ -134,13 +134,13 @@ call_api() {
         data=$(echo "$data" | jq --argjson sys "$system_info" '. + {"systemInfo": $sys}')
     fi
     
-    echo "Chờ giây lát..."
+    printf "Chờ giây lát...\n"
     response=$(curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "$data" \
         "$API_URL/$endpoint")
     
-    echo "Đang xử lý..."
+    printf "Đang xử lý...\n"
     echo "$response"
 }
 
@@ -540,9 +540,9 @@ fi
 
 # Hiển thị thông tin yêu cầu
 if [ -z "$COMMAND" ]; then
-    echo "Bạn đã yêu cầu: $MESSAGE"
+    printf "Bạn đã yêu cầu: %s\n" "$MESSAGE"
 else
-    echo "Bạn đã yêu cầu $COMMAND ${ARGS[*]}: $MESSAGE"
+    printf "Bạn đã yêu cầu %s %s: %s\n" "$COMMAND" "${ARGS[*]}" "$MESSAGE"
 fi
 
 # Xử lý lệnh hoặc yêu cầu trực tiếp
