@@ -85,6 +85,24 @@ configure() {
 
 # Hàm thu thập thông tin hệ thống
 collect_system_info() {
+    # Lấy thông tin CPU và Memory cho macOS
+    local cpu_info=""
+    local memory_info=""
+    local disk_info=""
+    
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # macOS
+        cpu_info=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Unknown")
+        memory_info=$(vm_stat 2>/dev/null | grep "Pages free" | awk '{print $3}' | sed 's/\.//')
+        disk_info=$(df -h / | tail -n 1)
+    else
+        # Linux
+        cpu_info=$(lscpu | grep 'Model name' | cut -d: -f2 | sed 's/^[ \t]*//' 2>/dev/null || echo "Unknown")
+        memory_info=$(free -h | head -n 2 | tail -n 1 2>/dev/null || echo "Unknown")
+        disk_info=$(df -h / | tail -n 1 2>/dev/null || echo "Unknown")
+    fi
+    
+    # Tạo JSON với thông tin cơ bản trước
     local info=$(jq -n \
         --arg os "$(uname -s)" \
         --arg version "$(uname -r)" \
@@ -93,15 +111,6 @@ collect_system_info() {
         --arg home "$HOME" \
         --arg pwd "$PWD" \
         --arg shell "$SHELL" \
-        --arg node "$(node -v 2>/dev/null || echo 'not installed')" \
-        --arg npm "$(npm -v 2>/dev/null || echo 'not installed')" \
-        --arg python "$(python3 --version 2>/dev/null || echo 'not installed')" \
-        --arg mysql "$(mysql --version 2>/dev/null || echo 'not installed')" \
-        --arg nginx "$(nginx -v 2>/dev/null || echo 'not installed')" \
-        --arg docker "$(docker --version 2>/dev/null || echo 'not installed')" \
-        --arg disk "$(df -h / | tail -n 1)" \
-        --arg memory "$(free -h | head -n 2 | tail -n 1)" \
-        --arg cpu "$(lscpu | grep 'Model name' | cut -d: -f2 | sed 's/^[ \t]*//')" \
         '{
             "os": $os,
             "version": $version,
@@ -109,17 +118,45 @@ collect_system_info() {
             "user": $user,
             "home": $home,
             "pwd": $pwd,
-            "shell": $shell,
+            "shell": $shell
+        }')
+    
+    # Thêm thông tin phần mềm
+    info=$(echo "$info" | jq \
+        --arg node "$(node -v 2>/dev/null || echo 'not installed')" \
+        --arg npm "$(npm -v 2>/dev/null || echo 'not installed')" \
+        --arg python "$(python3 --version 2>/dev/null || echo 'not installed')" \
+        --arg mysql "$(mysql --version 2>/dev/null || echo 'not installed')" \
+        --arg nginx "$(nginx -v 2>/dev/null || echo 'not installed')" \
+        --arg docker "$(docker --version 2>/dev/null || echo 'not installed')" \
+        '. + {
             "node": $node,
             "npm": $npm,
             "python": $python,
             "mysql": $mysql,
             "nginx": $nginx,
-            "docker": $docker,
-            "disk": $disk,
-            "memory": $memory,
-            "cpu": $cpu
+            "docker": $docker
         }')
+    
+    # Thêm thông tin phần cứng
+    info=$(echo "$info" | jq \
+        --arg cpu "$cpu_info" \
+        --arg memory "$memory_info" \
+        --arg disk "$disk_info" \
+        '. + {
+            "cpu": $cpu,
+            "memory": $memory,
+            "disk": $disk
+        }')
+    
+    # Debug thông tin hệ thống
+    echo "Debug - System Info: $info"
+    
+    if [ $? -ne 0 ]; then
+        echo "Lỗi: Không thể tạo thông tin hệ thống"
+        return 1
+    fi
+    
     echo "$info"
 }
 
@@ -129,16 +166,34 @@ call_api() {
     local data="$2"
     local system_info="$3"
     
+    # Debug thông tin đầu vào
+    echo "Debug - Endpoint: $endpoint"
+    echo "Debug - Data: $data"
+    echo "Debug - System Info: $system_info"
+    
     # Thêm thông tin hệ thống vào data nếu có
     if [ ! -z "$system_info" ]; then
         data=$(echo "$data" | jq --argjson sys "$system_info" '. + {"systemInfo": $sys}')
+        if [ $? -ne 0 ]; then
+            echo "Lỗi: Không thể thêm thông tin hệ thống vào data"
+            echo "Data gốc: $data"
+            echo "System Info: $system_info"
+            return 1
+        fi
     fi
     
     printf "Chờ giây lát...\n"
+    
+    # Debug data trước khi gửi
+    echo "Debug - Data gửi đi: $data"
+    
     response=$(curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "$data" \
         "$API_URL/$endpoint")
+    
+    # Debug phản hồi
+    echo "Debug - Phản hồi API: $response"
     
     printf "Đang xử lý...\n"
     
@@ -252,11 +307,20 @@ handle_check() {
     
     # Thu thập thông tin hệ thống
     local system_info=$(collect_system_info)
+    if [ $? -ne 0 ]; then
+        echo "Lỗi: Không thể thu thập thông tin hệ thống"
+        return 1
+    fi
     
     # Gọi API để lấy script
     local data=$(jq -n \
         --arg issue "Kiểm tra và sửa lỗi $service: $message" \
         '{"issue": $issue}')
+    
+    if [ $? -ne 0 ]; then
+        echo "Lỗi: Không thể tạo data request"
+        return 1
+    fi
     
     local response=$(call_api "process" "$data" "$system_info")
     if [ $? -ne 0 ]; then
