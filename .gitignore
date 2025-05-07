@@ -5,3 +5,4 @@ npm-debug.log
 yarn-error.log
 src/shell/*
 !src/shell/.gitkeep 
+package-lock.json
