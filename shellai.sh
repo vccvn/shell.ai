@@ -129,28 +129,19 @@ call_api() {
     local data="$2"
     local system_info="$3"
     
-    # Hiển thị thông tin yêu cầu
-    # echo "Đang gửi yêu cầu đến API..."
-    # echo "Endpoint: $API_URL/$endpoint"
-    # echo "Nội dung yêu cầu:"
-    # echo "$data" | jq '.'
-    
     # Thêm thông tin hệ thống vào data nếu có
     if [ ! -z "$system_info" ]; then
         data=$(echo "$data" | jq --argjson sys "$system_info" '. + {"systemInfo": $sys}')
-        # echo "Thông tin hệ thống:"
-        # echo "$system_info" | jq '.'
     fi
     
+    echo "Chờ giây lát..."
     response=$(curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "$data" \
         "$API_URL/$endpoint")
     
-    # echo "Phản hồi từ API:"
-    # echo "$response" | jq '.'
-    
-    # echo "$response"
+    echo "Đang xử lý..."
+    echo "$response"
 }
 
 # Hàm thực thi file
@@ -163,7 +154,13 @@ execute_script() {
     
     # Tạo file
     local filepath="$SHELL_DIR/$filename"
-    echo "$content" > "$filepath"
+    if ! echo "$content" > "$filepath"; then
+        echo "Tạo file script không thành công"
+        echo "Tên file: $filename"
+        echo "Nội dung:"
+        echo "$content"
+        return 1
+    fi
     
     # Đặt quyền thực thi nếu là shell script
     if [ "$type" = "sh" ]; then
@@ -171,18 +168,14 @@ execute_script() {
     fi
     
     # Thực thi file
-    # echo "Đang thực thi file: $filename"
     case "$type" in
         "js"|"javascript")
-            # echo "node $filepath $args"
             node "$filepath" $args
             ;;
         "sh"|"shell"|"bash")
-            echo "bash $filepath $args"
             bash "$filepath" $args
             ;;
         "py"|"python")
-            # echo "python3 $filepath $args"
             python3 "$filepath" $args
             ;;
         *)
@@ -251,9 +244,6 @@ handle_check() {
     # Thu thập thông tin hệ thống
     local system_info=$(collect_system_info)
     
-    echo "Kiểm tra dịch vụ: $service"
-    echo "Nội dung yêu cầu: $message"
-    
     # Gọi API để lấy script
     local data=$(jq -n \
         --arg issue "Kiểm tra và sửa lỗi $service: $message" \
@@ -265,8 +255,6 @@ handle_check() {
     if [ "$success" = "true" ]; then
         local files=$(echo "$response" | jq -r '.files')
         local file_count=$(echo "$files" | jq 'length')
-        
-        echo "Số lượng file cần thực thi: $file_count"
         
         for ((i=0; i<$file_count; i++)); do
             local file_info=$(echo "$files" | jq -r ".[$i]")
@@ -459,8 +447,6 @@ handle_direct_request() {
     # Thu thập thông tin hệ thống
     local system_info=$(collect_system_info)
     
-    echo "Yêu cầu trực tiếp: $message"
-    
     # Gọi API để lấy script
     local data=$(jq -n \
         --arg issue "$message" \
@@ -472,8 +458,6 @@ handle_direct_request() {
     if [ "$success" = "true" ]; then
         local files=$(echo "$response" | jq -r '.files')
         local file_count=$(echo "$files" | jq 'length')
-        
-        echo "Số lượng file cần thực thi: $file_count"
         
         for ((i=0; i<$file_count; i++)); do
             local file_info=$(echo "$files" | jq -r ".[$i]")
@@ -554,6 +538,13 @@ if [ -z "$MESSAGE" ]; then
     exit 1
 fi
 
+# Hiển thị thông tin yêu cầu
+if [ -z "$COMMAND" ]; then
+    echo "Bạn đã yêu cầu: $MESSAGE"
+else
+    echo "Bạn đã yêu cầu $COMMAND ${ARGS[*]}: $MESSAGE"
+fi
+
 # Xử lý lệnh hoặc yêu cầu trực tiếp
 if [ -z "$COMMAND" ]; then
     # Nếu không có lệnh, xử lý yêu cầu trực tiếp
@@ -599,7 +590,7 @@ else
                 show_help
                 exit 1
             fi
-            handle_copy "${ARGS[0]}" "$MESSAGE" "${ARGS[@]:1}"
+            handle_copy "${ARGS[0]}" "${ARGS[1]}" "$MESSAGE" "${ARGS[@]:2}"
             ;;
         install|setup)
             # TODO: Implement other commands
