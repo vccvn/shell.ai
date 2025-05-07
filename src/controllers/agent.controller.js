@@ -22,7 +22,12 @@ async function processIssue(req, res) {
     
     ${issue}
     
-    Lưu ý: Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết.
+    Lưu ý: 
+    1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết.
+    2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
+    3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('ls -la')
+    4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'ls -la'
+    5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('ls -la')
     
     Hãy phản hồi dưới dạng JSON theo định dạng sau:
     [
@@ -95,6 +100,13 @@ async function fixScriptError(req, res) {
     Lỗi gặp phải: ${error}
     
     ${previousFiles ? `Script trước đó: ${JSON.stringify(previousFiles, null, 2)}` : ''}
+    
+    Lưu ý: 
+    1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết.
+    2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
+    3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('ls -la')
+    4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'ls -la'
+    5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('ls -la')
     
     Hãy phản hồi dưới dạng JSON theo định dạng sau:
     [

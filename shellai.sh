@@ -15,11 +15,16 @@ show_help() {
     echo ""
     echo "Cú pháp:"
     echo "  sudo ./shellai.sh [lệnh] [tham số...] [-m \"nội dung yêu cầu\"] [--no-cleanup]"
+    echo "  sudo ./shellai.sh -m \"nội dung yêu cầu\" [--no-cleanup]"
     echo ""
     echo "Các lệnh:"
     echo "  check    Kiểm tra và sửa lỗi dịch vụ"
     echo "  install  Cài đặt phần mềm/dịch vụ"
     echo "  setup    Thiết lập và cấu hình"
+    echo "  create   Tạo file hoặc thư mục"
+    echo "  delete   Xóa file hoặc thư mục"
+    echo "  move     Di chuyển file hoặc thư mục"
+    echo "  copy     Sao chép file hoặc thư mục"
     echo "  config   Cấu hình Shell.AI"
     echo "  help     Hiển thị trợ giúp"
     echo ""
@@ -28,6 +33,12 @@ show_help() {
     echo "  --no-cleanup     Không xóa file sau khi hoàn thành"
     echo "  --cleanup        Xóa file sau khi hoàn thành (mặc định)"
     echo "  -h, --help       Hiển thị trợ giúp"
+    echo ""
+    echo "Ví dụ:"
+    echo "  sudo ./shellai.sh check mysql -m \"Kiểm tra lỗi mysql\""
+    echo "  sudo ./shellai.sh create file index.html -m \"Tạo file HTML với nội dung bài thơ\""
+    echo "  sudo ./shellai.sh install nginx php mysql -m \"Cài đặt LAMP stack\""
+    echo "  sudo ./shellai.sh -m \"Tạo file HTML với nội dung bài hát của Sơn Tùng\""
 }
 
 # Hàm đọc cấu hình
@@ -72,10 +83,56 @@ configure() {
     echo "Đã lưu cấu hình!"
 }
 
+# Hàm thu thập thông tin hệ thống
+collect_system_info() {
+    local info=$(jq -n \
+        --arg os "$(uname -s)" \
+        --arg version "$(uname -r)" \
+        --arg hostname "$(hostname)" \
+        --arg user "$(whoami)" \
+        --arg home "$HOME" \
+        --arg pwd "$PWD" \
+        --arg shell "$SHELL" \
+        --arg node "$(node -v 2>/dev/null || echo 'not installed')" \
+        --arg npm "$(npm -v 2>/dev/null || echo 'not installed')" \
+        --arg python "$(python3 --version 2>/dev/null || echo 'not installed')" \
+        --arg mysql "$(mysql --version 2>/dev/null || echo 'not installed')" \
+        --arg nginx "$(nginx -v 2>/dev/null || echo 'not installed')" \
+        --arg docker "$(docker --version 2>/dev/null || echo 'not installed')" \
+        --arg disk "$(df -h / | tail -n 1)" \
+        --arg memory "$(free -h | head -n 2 | tail -n 1)" \
+        --arg cpu "$(lscpu | grep 'Model name' | cut -d: -f2 | sed 's/^[ \t]*//')" \
+        '{
+            "os": $os,
+            "version": $version,
+            "hostname": $hostname,
+            "user": $user,
+            "home": $home,
+            "pwd": $pwd,
+            "shell": $shell,
+            "node": $node,
+            "npm": $npm,
+            "python": $python,
+            "mysql": $mysql,
+            "nginx": $nginx,
+            "docker": $docker,
+            "disk": $disk,
+            "memory": $memory,
+            "cpu": $cpu
+        }')
+    echo "$info"
+}
+
 # Hàm gọi API
 call_api() {
     local endpoint="$1"
     local data="$2"
+    local system_info="$3"
+    
+    # Thêm thông tin hệ thống vào data nếu có
+    if [ ! -z "$system_info" ]; then
+        data=$(echo "$data" | jq --argjson sys "$system_info" '. + {"systemInfo": $sys}')
+    fi
     
     response=$(curl -s -X POST \
         -H "Content-Type: application/json" \
@@ -106,12 +163,15 @@ execute_script() {
     echo "Đang thực thi file: $filename"
     case "$type" in
         "js")
+            echo "Lệnh: node $filepath $args"
             node "$filepath" $args
             ;;
         "sh")
+            echo "Lệnh: bash $filepath $args"
             bash "$filepath" $args
             ;;
         "py")
+            echo "Lệnh: python3 $filepath $args"
             python3 "$filepath" $args
             ;;
         *)
@@ -177,12 +237,218 @@ handle_check() {
     # Tạo thư mục nếu chưa tồn tại
     mkdir -p "$SHELL_DIR"
     
+    # Thu thập thông tin hệ thống
+    local system_info=$(collect_system_info)
+    
     # Gọi API để lấy script
     local data=$(jq -n \
         --arg issue "Kiểm tra và sửa lỗi $service: $message" \
         '{"issue": $issue}')
     
+    local response=$(call_api "process" "$data" "$system_info")
+    local success=$(echo "$response" | jq -r '.success')
+    
+    if [ "$success" = "true" ]; then
+        local files=$(echo "$response" | jq -r '.files')
+        local file_count=$(echo "$files" | jq 'length')
+        
+        for ((i=0; i<$file_count; i++)); do
+            local file_info=$(echo "$files" | jq -r ".[$i]")
+            execute_script "$file_info"
+            if [ $? -ne 0 ]; then
+                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+            fi
+        done
+    else
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+    fi
+}
+
+# Hàm xử lý lệnh create
+handle_create() {
+    local type="$1"
+    local target="$2"
+    local message="$3"
+    shift 3
+    local args=("$@")
+    
+    # Tạo thư mục nếu chưa tồn tại
+    mkdir -p "$SHELL_DIR"
+    
+    # Gọi API để lấy script
+    local data=$(jq -n \
+        --arg issue "Tạo $type $target: $message" \
+        --arg type "$type" \
+        --arg target "$target" \
+        --arg args "$(echo "${args[@]}" | jq -R .)" \
+        '{
+            "issue": $issue,
+            "type": $type,
+            "target": $target,
+            "args": ($args | split(" "))
+        }')
+    
     local response=$(call_api "process" "$data")
+    local success=$(echo "$response" | jq -r '.success')
+    
+    if [ "$success" = "true" ]; then
+        local files=$(echo "$response" | jq -r '.files')
+        local file_count=$(echo "$files" | jq 'length')
+        
+        for ((i=0; i<$file_count; i++)); do
+            local file_info=$(echo "$files" | jq -r ".[$i]")
+            execute_script "$file_info"
+            if [ $? -ne 0 ]; then
+                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+            fi
+        done
+    else
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+    fi
+}
+
+# Hàm xử lý lệnh delete
+handle_delete() {
+    local target="$1"
+    local message="$2"
+    shift 2
+    local args=("$@")
+    
+    # Tạo thư mục nếu chưa tồn tại
+    mkdir -p "$SHELL_DIR"
+    
+    # Gọi API để lấy script
+    local data=$(jq -n \
+        --arg issue "Xóa $target: $message" \
+        --arg target "$target" \
+        --arg args "$(echo "${args[@]}" | jq -R .)" \
+        '{
+            "issue": $issue,
+            "target": $target,
+            "args": ($args | split(" "))
+        }')
+    
+    local response=$(call_api "process" "$data")
+    local success=$(echo "$response" | jq -r '.success')
+    
+    if [ "$success" = "true" ]; then
+        local files=$(echo "$response" | jq -r '.files')
+        local file_count=$(echo "$files" | jq 'length')
+        
+        for ((i=0; i<$file_count; i++)); do
+            local file_info=$(echo "$files" | jq -r ".[$i]")
+            execute_script "$file_info"
+            if [ $? -ne 0 ]; then
+                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+            fi
+        done
+    else
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+    fi
+}
+
+# Hàm xử lý lệnh move
+handle_move() {
+    local source="$1"
+    local dest="$2"
+    local message="$3"
+    shift 3
+    local args=("$@")
+    
+    # Tạo thư mục nếu chưa tồn tại
+    mkdir -p "$SHELL_DIR"
+    
+    # Gọi API để lấy script
+    local data=$(jq -n \
+        --arg issue "Di chuyển $source đến $dest: $message" \
+        --arg source "$source" \
+        --arg dest "$dest" \
+        --arg args "$(echo "${args[@]}" | jq -R .)" \
+        '{
+            "issue": $issue,
+            "source": $source,
+            "dest": $dest,
+            "args": ($args | split(" "))
+        }')
+    
+    local response=$(call_api "process" "$data")
+    local success=$(echo "$response" | jq -r '.success')
+    
+    if [ "$success" = "true" ]; then
+        local files=$(echo "$response" | jq -r '.files')
+        local file_count=$(echo "$files" | jq 'length')
+        
+        for ((i=0; i<$file_count; i++)); do
+            local file_info=$(echo "$files" | jq -r ".[$i]")
+            execute_script "$file_info"
+            if [ $? -ne 0 ]; then
+                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+            fi
+        done
+    else
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+    fi
+}
+
+# Hàm xử lý lệnh copy
+handle_copy() {
+    local source="$1"
+    local dest="$2"
+    local message="$3"
+    shift 3
+    local args=("$@")
+    
+    # Tạo thư mục nếu chưa tồn tại
+    mkdir -p "$SHELL_DIR"
+    
+    # Gọi API để lấy script
+    local data=$(jq -n \
+        --arg issue "Sao chép $source đến $dest: $message" \
+        --arg source "$source" \
+        --arg dest "$dest" \
+        --arg args "$(echo "${args[@]}" | jq -R .)" \
+        '{
+            "issue": $issue,
+            "source": $source,
+            "dest": $dest,
+            "args": ($args | split(" "))
+        }')
+    
+    local response=$(call_api "process" "$data")
+    local success=$(echo "$response" | jq -r '.success')
+    
+    if [ "$success" = "true" ]; then
+        local files=$(echo "$response" | jq -r '.files')
+        local file_count=$(echo "$files" | jq 'length')
+        
+        for ((i=0; i<$file_count; i++)); do
+            local file_info=$(echo "$files" | jq -r ".[$i]")
+            execute_script "$file_info"
+            if [ $? -ne 0 ]; then
+                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+            fi
+        done
+    else
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+    fi
+}
+
+# Hàm xử lý yêu cầu trực tiếp
+handle_direct_request() {
+    local message="$1"
+    
+    # Tạo thư mục nếu chưa tồn tại
+    mkdir -p "$SHELL_DIR"
+    
+    # Thu thập thông tin hệ thống
+    local system_info=$(collect_system_info)
+    
+    # Gọi API để lấy script
+    local data=$(jq -n \
+        --arg issue "$message" \
+        '{"issue": $issue}')
+    
+    local response=$(call_api "process" "$data" "$system_info")
     local success=$(echo "$response" | jq -r '.success')
     
     if [ "$success" = "true" ]; then
@@ -207,7 +473,9 @@ load_config
 # Xử lý tham số
 COMMAND=""
 MESSAGE=""
+SERVICE=""
 CLEANUP=true
+ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -231,46 +499,103 @@ while [[ $# -gt 0 ]]; do
             configure
             exit 0
             ;;
-        check|install|setup)
+        check|install|setup|create|delete|move|copy)
             COMMAND="$1"
             shift
+            # Lấy các tham số cho đến khi gặp tùy chọn
+            while [[ $# -gt 0 && ! "$1" =~ ^- ]]; do
+                ARGS+=("$1")
+                shift
+            done
             ;;
         *)
-            echo "Tham số không hợp lệ: $1"
-            show_help
-            exit 1
+            # Nếu không phải tùy chọn và chưa có lệnh, coi như lệnh tùy biến
+            if [ -z "$COMMAND" ]; then
+                COMMAND="$1"
+                shift
+                # Lấy các tham số cho đến khi gặp tùy chọn
+                while [[ $# -gt 0 && ! "$1" =~ ^- ]]; do
+                    ARGS+=("$1")
+                    shift
+                done
+            else
+                echo "Tham số không hợp lệ: $1"
+                show_help
+                exit 1
+            fi
             ;;
     esac
 done
 
-# Kiểm tra lệnh và thông điệp
-if [ -z "$COMMAND" ]; then
-    echo "Thiếu lệnh"
-    show_help
-    exit 1
-fi
-
+# Kiểm tra thông điệp
 if [ -z "$MESSAGE" ]; then
     echo "Thiếu nội dung yêu cầu (-m)"
     show_help
     exit 1
 fi
 
-# Xử lý lệnh
-case "$COMMAND" in
-    check)
-        handle_check "$1" "$MESSAGE"
-        ;;
-    install|setup)
-        # TODO: Implement other commands
-        echo "Lệnh $COMMAND chưa được triển khai"
-        exit 1
-        ;;
-    *)
-        echo "Lệnh không hợp lệ: $COMMAND"
-        show_help
-        exit 1
-        ;;
-esac
+# Xử lý lệnh hoặc yêu cầu trực tiếp
+if [ -z "$COMMAND" ]; then
+    # Nếu không có lệnh, xử lý yêu cầu trực tiếp
+    handle_direct_request "$MESSAGE"
+else
+    # Xử lý các lệnh cụ thể
+    case "$COMMAND" in
+        check)
+            if [ ${#ARGS[@]} -eq 0 ]; then
+                echo "Thiếu tên dịch vụ cần kiểm tra"
+                show_help
+                exit 1
+            fi
+            handle_check "${ARGS[0]}" "$MESSAGE"
+            ;;
+        create)
+            if [ ${#ARGS[@]} -lt 2 ]; then
+                echo "Thiếu thông tin cần thiết (type và target)"
+                show_help
+                exit 1
+            fi
+            handle_create "${ARGS[0]}" "${ARGS[1]}" "$MESSAGE" "${ARGS[@]:2}"
+            ;;
+        delete)
+            if [ ${#ARGS[@]} -eq 0 ]; then
+                echo "Thiếu target cần xóa"
+                show_help
+                exit 1
+            fi
+            handle_delete "${ARGS[0]}" "$MESSAGE" "${ARGS[@]:1}"
+            ;;
+        move)
+            if [ ${#ARGS[@]} -lt 2 ]; then
+                echo "Thiếu source và destination"
+                show_help
+                exit 1
+            fi
+            handle_move "${ARGS[0]}" "${ARGS[1]}" "$MESSAGE" "${ARGS[@]:2}"
+            ;;
+        copy)
+            if [ ${#ARGS[@]} -lt 2 ]; then
+                echo "Thiếu source và destination"
+                show_help
+                exit 1
+            fi
+            handle_copy "${ARGS[0]}" "$MESSAGE" "${ARGS[@]:1}"
+            ;;
+        install|setup)
+            # TODO: Implement other commands
+            echo "Lệnh $COMMAND chưa được triển khai"
+            exit 1
+            ;;
+        *)
+            # Xử lý lệnh tùy biến
+            local custom_prompt="$COMMAND"
+            if [ ${#ARGS[@]} -gt 0 ]; then
+                custom_prompt="$COMMAND ${ARGS[*]}"
+            fi
+            custom_prompt="$custom_prompt: $MESSAGE"
+            handle_direct_request "$custom_prompt"
+            ;;
+    esac
+fi
 
 exit 0 
