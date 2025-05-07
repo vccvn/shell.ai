@@ -141,6 +141,15 @@ call_api() {
         "$API_URL/$endpoint")
     
     printf "Đang xử lý...\n"
+    
+    # Kiểm tra phản hồi có phải JSON hợp lệ không
+    if ! echo "$response" | jq . >/dev/null 2>&1; then
+        echo "Lỗi: Phản hồi từ API không phải JSON hợp lệ"
+        echo "Phản hồi nhận được:"
+        echo "$response"
+        return 1
+    fi
+    
     echo "$response"
 }
 
@@ -250,21 +259,36 @@ handle_check() {
         '{"issue": $issue}')
     
     local response=$(call_api "process" "$data" "$system_info")
-    local success=$(echo "$response" | jq -r '.success')
+    if [ $? -ne 0 ]; then
+        echo "Không thể kết nối đến API"
+        return 1
+    fi
+    
+    local success=$(echo "$response" | jq -r '.success // false')
     
     if [ "$success" = "true" ]; then
-        local files=$(echo "$response" | jq -r '.files')
+        local files=$(echo "$response" | jq -r '.files // []')
         local file_count=$(echo "$files" | jq 'length')
+        
+        if [ "$file_count" -eq 0 ]; then
+            echo "Không có file nào được tạo"
+            return 1
+        fi
         
         for ((i=0; i<$file_count; i++)); do
             local file_info=$(echo "$files" | jq -r ".[$i]")
+            if [ -z "$file_info" ]; then
+                echo "Lỗi: Không thể đọc thông tin file thứ $((i+1))"
+                continue
+            fi
             execute_script "$file_info"
             if [ $? -ne 0 ]; then
-                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+                handle_error "$(echo "$response" | jq -r '.error // "Lỗi không xác định"')" "$message" "$files"
             fi
         done
     else
-        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message // "Lỗi không xác định"')"
+        return 1
     fi
 }
 
@@ -453,21 +477,36 @@ handle_direct_request() {
         '{"issue": $issue}')
     
     local response=$(call_api "process" "$data" "$system_info")
-    local success=$(echo "$response" | jq -r '.success')
+    if [ $? -ne 0 ]; then
+        echo "Không thể kết nối đến API"
+        return 1
+    fi
+    
+    local success=$(echo "$response" | jq -r '.success // false')
     
     if [ "$success" = "true" ]; then
-        local files=$(echo "$response" | jq -r '.files')
+        local files=$(echo "$response" | jq -r '.files // []')
         local file_count=$(echo "$files" | jq 'length')
+        
+        if [ "$file_count" -eq 0 ]; then
+            echo "Không có file nào được tạo"
+            return 1
+        fi
         
         for ((i=0; i<$file_count; i++)); do
             local file_info=$(echo "$files" | jq -r ".[$i]")
+            if [ -z "$file_info" ]; then
+                echo "Lỗi: Không thể đọc thông tin file thứ $((i+1))"
+                continue
+            fi
             execute_script "$file_info"
             if [ $? -ne 0 ]; then
-                handle_error "$(echo "$response" | jq -r '.error')" "$message" "$files"
+                handle_error "$(echo "$response" | jq -r '.error // "Lỗi không xác định"')" "$message" "$files"
             fi
         done
     else
-        echo "Không thể tạo script: $(echo "$response" | jq -r '.message')"
+        echo "Không thể tạo script: $(echo "$response" | jq -r '.message // "Lỗi không xác định"')"
+        return 1
     fi
 }
 
