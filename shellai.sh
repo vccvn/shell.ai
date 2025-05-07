@@ -323,6 +323,7 @@ handle_check() {
     fi
     
     local response=$(call_api "process" "$data" "$system_info")
+    echo "$response"
     if [ $? -ne 0 ]; then
         echo "Không thể kết nối đến API"
         return 1
@@ -421,6 +422,7 @@ handle_delete() {
         }')
     
     local response=$(call_api "process" "$data")
+    
     local success=$(echo "$response" | jq -r '.success')
     
     if [ "$success" = "true" ]; then
