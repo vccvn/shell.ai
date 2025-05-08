@@ -13,13 +13,53 @@ const openai = new OpenAI({
  */
 async function getCompletion(prompt) {
   try {
+    // Kiểm tra nếu prompt yêu cầu phản hồi JSON
+    if (prompt.includes('dạng JSON') || prompt.includes('định dạng JSON')) {
+      // Thêm hướng dẫn cụ thể về JSON vào cuối prompt
+      prompt += `\n\nQUAN TRỌNG: Trả về JSON hợp lệ. KHÔNG sử dụng backticks (\`) trong phản hồi JSON. 
+      Sử dụng dấu ngoặc kép (") cho các trường và giá trị chuỗi. 
+      Nếu cần đặt dấu ngoặc kép trong chuỗi, hãy escape chúng bằng dấu gạch chéo ngược: \\".
+      Đảm bảo nội dung script được đặt trong chuỗi JSON hợp lệ và không bị cắt ngắn.
+      KHÔNG bao gồm bất kỳ văn bản nào trước hoặc sau đối tượng JSON.
+      KHÔNG sử dụng định dạng markdown hoặc code block (\`\`\`) trong phản hồi.
+      CHỈ trả về đối tượng JSON thuần túy.`;
+    }
+
     const response = await openai.chat.completions.create({
       model: config.openai.model,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 0.7
     });
 
-    return response.choices[0].message.content;
+    let content = response.choices[0].message.content;
+    
+    // Nếu phản hồi có thể là JSON nhưng sử dụng backticks, thử chuyển đổi
+    if ((prompt.includes('dạng JSON') || prompt.includes('định dạng JSON')) && content.includes('`')) {
+      try {
+        // Tìm và thay thế backticks trong phản hồi
+        const contentRegex = /"content":\s*`([\s\S]*?)`/g;
+        content = content.replace(contentRegex, function(match, p1) {
+          // Escape các ký tự đặc biệt trong nội dung
+          const escaped = p1.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+          return '"content": "' + escaped + '"';
+        });
+        
+        // Tìm các trường khác có backticks
+        const otherFieldsRegex = /"([^"]+)":\s*`([^`]*)`/g;
+        content = content.replace(otherFieldsRegex, function(match, field, value) {
+          // Escape các ký tự đặc biệt trong giá trị
+          const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+          return '"' + field + '": "' + escaped + '"';
+        });
+        
+        // Kiểm tra xem kết quả có phải JSON hợp lệ không
+        JSON.parse(content);
+      } catch (error) {
+        console.warn('Không thể chuyển đổi backticks trong phản hồi JSON:', error.message);
+      }
+    }
+
+    return content;
   } catch (error) {
     console.error('Lỗi khi gọi OpenAI API:', error);
     throw new Error(`Lỗi OpenAI: ${error.message}`);
@@ -29,23 +69,36 @@ async function getCompletion(prompt) {
 /**
  * Phân tích phản hồi từ OpenAI để lấy thông tin về file script
  * @param {string} content - Nội dung phản hồi từ OpenAI
- * @returns {Array<object>} - Mảng các đối tượng file cần tạo
+ * @returns {Array<object>|object} - Mảng các đối tượng file cần tạo hoặc một đối tượng file duy nhất
  */
 function parseAIResponse(content) {
   try {
     // Chuyển đổi phản hồi text thành đối tượng JSON nếu cần
-    // Nếu phản hồi đã là JSON, sử dụng trực tiếp
     if (typeof content === 'string') {
       try {
-        return JSON.parse(content);
+        // Thử parse nội dung thành JSON
+        const parsed = JSON.parse(content);
+        
+        // Kiểm tra xem kết quả là object hay array
+        if (Array.isArray(parsed)) {
+          return parsed; // Trả về mảng nếu là array
+        } else if (typeof parsed === 'object') {
+          return [parsed]; // Đóng gói object vào array để tương thích với code cũ
+        } else {
+          // Không phải object hay array, thử phương pháp khác
+          throw new Error('Kết quả parse không phải object hoặc array');
+        }
       } catch (e) {
         // Nếu không thể parse JSON, thử phân tích theo định dạng khác
-        // Đây là logic mẫu, bạn có thể điều chỉnh theo format phản hồi thực tế
         const files = [];
+        
+        // Thử tìm cú pháp code block
         const fileRegex = /```([a-zA-Z0-9_.]+)\n([\s\S]*?)```/g;
         let match;
+        let foundMatch = false;
         
         while ((match = fileRegex.exec(content)) !== null) {
+          foundMatch = true;
           const fileName = match[1];
           const fileContent = match[2];
           
@@ -57,10 +110,48 @@ function parseAIResponse(content) {
           });
         }
         
-        return files;
+        if (foundMatch) {
+          return files;
+        }
+        
+        // Thử tìm JSON object ở trong nội dung
+        const jsonRegex = /({[\s\S]*?})/g;
+        while ((match = jsonRegex.exec(content)) !== null) {
+          try {
+            const parsedJson = JSON.parse(match[1]);
+            if (parsedJson.filename && parsedJson.content) {
+              files.push(parsedJson);
+              foundMatch = true;
+            }
+          } catch (err) {
+            // Bỏ qua nếu không parse được
+          }
+        }
+        
+        if (foundMatch) {
+          return files;
+        }
+        
+        // Nếu không tìm thấy định dạng nào, tạo file text với nội dung gốc
+        return [{
+          filename: 'output.txt',
+          content: content,
+          type: 'txt',
+          args: [],
+          description: 'Kết quả từ AI không được phân tích thành file'
+        }];
       }
+    } else if (typeof content === 'object') {
+      // Nếu content đã là object, kiểm tra xem có phải array không
+      if (Array.isArray(content)) {
+        return content;
+      }
+      // Nếu là object đơn, bọc trong array để tương thích với code cũ
+      return [content];
     }
-    return content;
+    
+    // Trường hợp không xác định, trả về array rỗng
+    return [];
   } catch (error) {
     console.error('Lỗi khi phân tích phản hồi:', error);
     throw new Error(`Lỗi phân tích: ${error.message}`);

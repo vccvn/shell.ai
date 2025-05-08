@@ -1,0 +1,79 @@
+tôi muốn tạo hệ thống AI Agent giúp phát triển và sửa chữa hệ thống, là công cụ hỗ trợ người dùng với các tác vụ liên quan đến kiểm tra hệ thống, cài đặt phần mềm, sửa lỗi, tạo file, hiển thị thông tin theo yêu cầu
+
+1. api server dùng để làm việc với chatgpt hoặc các mô hình ngôn ngữ lớn. Nhận thông tin yêu cầu, thông tin hệ thống, ngữ cảnh, hoặc thông báo lỗi đính kèm.
+    -> từ đó tạo ra các câu prompt phù hợp
+    -> sau đó trả về data theo mẫu:
+    {
+        "action": "show" | "run" | "create" | "input" | "chat",
+        "data" :{
+            "content": "Nội dung hiển thị hoặc nội dung file",
+            "filename": "Tên file nếu action là run hoặc create",
+            "type": "Loại file",
+            "label": "Nhãn khi muốn người dùng nhập liệu",
+            "description": "Mô tả file dặc biệt là với action run thì hãy mô tả cho người dùng biết file này cần thực thi những hành động nào",
+            "prepare": "Một số lệnh cài đặt thư viện cần cho file script thực thi nếu trong nội dung file cần thư viện đó. áp dụng cho python hoặc nodejs",
+            "args": "Tham số nếu cần"
+        }
+    }
+    
+    phần action là do AI tự quyết định dựa trên yêu cầu gửi lên.
+    Với các tác vụ liên quan hệ thống thì ưu tiên dạng file bash, ví dụ như lệnh install abc def ...
+        - Cần kiểm tra hệ thống kèm thông tin output thì ưu tiên js (sẽ chạy bằng lệnh node [path/to/folder]/[filename]) hoặc file bash tuỳ xem cái nào tiện hơn
+        - ngoài ra cần thực thi tác vụ thì ưu tiên js hơn chút để đảm bảo an toàn
+    
+
+2. File bash thực thi
+    cần một file bash để thực thi các hành động và file nay có thể hành động độc lập với server api
+    file nào có thể thực thi theo các mẫu sau:
+        (bash | sudo) (./ | /path/to/folder/)shellai.sh [lệnh] [tham số] [-[tuỳ chọn] [giá trị]] [--[tuỳ chọn]]
+            ví dụ : bash shellai.sh install apache2 nginx php ... -m "Cài đặt lemp, cấu hình nginx làm revesere proxy cho apache2"
+            bash shellai.sh check mysql
+            sudo shellai.sh -m "Cài máy chủ web php"
+            sudo ./shellai.sh create file [tên file] -m "yêu cầu cụ thể" (với yêu cầu create file này thì cần api trả về action create và loại file tuỳ thuộc vào [tên file])
+            sudo ./shellai.sh chat (khi này bật tính năng chat. người dùng nhập gì thì gửi thẳng cho chatgpt và hiển thị nội dung trả về và tiếp tục bật mode chat cho đến khi người dùng nhập "exit")
+            sudo ./shellai.sh abc def ghi... -m ... (cái nay2 cũng thuộc dạng run nhưng gửi api "abc def ghi... : $m")
+            
+    dữ liệu trả về json
+        hành động tiếp theo phụ thuộc vào action
+            - run: tạo file dự trên filename và content vào thư mục riêng sau đó thực thi dựa trên loại file (sh | js (node) | python3 | php)
+                khi thực thi nếu nhập tham số thì yêu cầu người dùng nhập tham số rồi mới lấy tham số đó để thực thi.
+                hiển thị description trước khi thực thi và yêu cầu tham số nếu có
+            - create: chỉ tạo file không thực thi. tạo file dự trên filename (tại thư mục hiện tại) hoặc file path tuỳ thuộc lúc đầu user nhập vào cái gì.
+            - show: hiển thị nội dung
+            - chat: bật tính năng chat yêu cầu người dùng nhập nội dung
+            - input: in ra label, cho người dùng nhập liệu, sau đó lại gửi cho api
+        Hành động phát sinh lỗi thì phải in ra lỗi
+        có chế độ debug sẽ in thông tin ở mỗi bước
+            - in ra data trước9 khi gửi api
+            - in ra data nhận về từ curl
+3. chia file bash thành các file nhỏ định nghĩa functions và file nhận tham số từ người dùng và gọi hàm và thực thi riêng.
+---------------------
+4. Cập nhật hệ thống chạym script bằng javascript : shellai.js
+
+5. Sửa thành 3 chế độ (mode), action được quyết định bởi AI chứ không phải do người dùng gửi lên.
+    - default: các chức ngăng như hiện tại nhưng loại bỏ tính năng chat.
+        chức năng này không cần cơ chế kích hoạt
+    - chat: là chế độ chat được kích hoạt theo cú pháp :
+        bash shellai.sh chat -m "Nội dung"
+        node shellai.js chat -m "Nội dung tuỳ chọn"
+        ...
+        nếu có -m và có nội dung thì đó là tin nhắn từ người dùng gửi luôn và chờ phản hồi mới cho chat tiếp
+        nếu không có -m thời mời người dùng nhập nội dung.
+    -dev: Tính năng phát triển hệ thống. Giống hệt chat nhưng data trả về có thể có action và có nội dung file cần thực thi tuỳ yêu cầu
+        kích hoạt bằng cách:
+        (node / bash) shellai.(js/sh) dev
+        ở chế độ này nếu data trả về có action thì hiển thị mô tả hành động của file sẽ thực thi và hỏi người dùng có muốn thực thi hay không.
+        có thì thực thi và i ra kết quả  hoặc lỗi và tiếp tục chương trình
+6. về dữ liệu trả về :
+    Api cần phản hồi CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
+    {
+        "action": "Hành động ccho biết phía client phải làm gì",
+        "message": "Nội dung chat hoặc nôi dung cần hiển thị với người dùng",
+        "script": {
+            "filename": "tên_file.js",
+            "content": "nội dung file đầy đủ, không bị cắt ngắn",
+            "type": "js",
+            "description": "mô tả ngắn về tác dụng của file",
+            "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
+        }
+    }

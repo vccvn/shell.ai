@@ -3,7 +3,7 @@
 Shell.AI là một AI agent chuyên phát triển hệ thống, tự động hóa việc tạo và thực thi script dựa trên yêu cầu của người dùng.
 
 <div align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="version">
   <img src="https://img.shields.io/badge/license-ISC-green.svg" alt="license">
 </div>
 
@@ -17,6 +17,8 @@ Shell.AI là một AI agent chuyên phát triển hệ thống, tự động hó
 - 🧹 Tự động dọn dẹp file sau khi hoàn thành
 - 📝 Giao diện dòng lệnh đơn giản, dễ sử dụng
 - 🔄 Hỗ trợ nhiều cú pháp đơn giản và linh hoạt
+- 💬 Chế độ dev với lưu trữ lịch sử trò chuyện
+- 🔌 Kiểm tra và cài đặt thư viện tự động
 
 ## Cài đặt
 
@@ -27,9 +29,8 @@ Shell.AI là một AI agent chuyên phát triển hệ thống, tự động hó
 - npm >= 6.x
 
 #### Shell Client
-- bash
-- curl
-- jq (sẽ được tự động cài đặt nếu chưa có)
+- Node.js >= 14.x
+- npm >= 6.x
 
 ### Cài đặt API Server
 
@@ -86,48 +87,26 @@ npm run pm2:start
 npm run pm2:start:prod
 ```
 
-3. Các lệnh PM2 khác:
+### Cài đặt Shell Client (JavaScript)
+
+1. Cấp quyền thực thi cho file shellai.js:
 
 ```bash
-# Kiểm tra trạng thái ứng dụng
-npm run pm2:status
-
-# Xem log ứng dụng
-npm run pm2:logs
-
-# Khởi động lại ứng dụng
-npm run pm2:restart
-
-# Dừng ứng dụng
-npm run pm2:stop
+chmod +x shellai.js
 ```
 
-4. Cấu hình tự động khởi động khi hệ thống khởi động:
+2. Tạo lệnh ngắn gọn (tùy chọn):
 
 ```bash
-pm2 startup
-# Thực hiện theo hướng dẫn hiển thị
-
-# Lưu cấu hình hiện tại
-pm2 save
+ln -sf shellai.js ai
+chmod +x ai
 ```
 
-### Cài đặt Shell Client
-
-1. Tải file shellai.sh:
+3. Cấu hình Shell Client:
 
 ```bash
-wget https://raw.githubusercontent.com/username/shell.ai/main/shellai.sh
-chmod +x shellai.sh
+./shellai.js config
 ```
-
-2. Cấu hình Shell Client:
-
-```bash
-sudo ./shellai.sh config
-```
-
-Nhập URL của API server và thư mục để lưu trữ shell scripts.
 
 ## Sử dụng
 
@@ -135,53 +114,109 @@ Nhập URL của API server và thư mục để lưu trữ shell scripts.
 
 ```bash
 # Cấu trúc chung
-sudo ./shellai.sh [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--no-cleanup]
+./shellai.js [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
+
+# Hoặc sử dụng lệnh ngắn gọn
+./ai [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
 
 # Sử dụng trực tiếp với yêu cầu
-sudo ./shellai.sh -m "yêu cầu của bạn"
+./ai -m "yêu cầu của bạn"
 ```
 
 ### Các lệnh hỗ trợ
 
 ```bash
 # Cài đặt các công cụ
-sudo ./shellai.sh install nginx php mysql
+./ai install nginx php mysql
 
 # Cài đặt với yêu cầu cụ thể
-sudo ./shellai.sh install -m "Cài đặt LAMP stack với PHP 8.1"
+./ai install -m "Cài đặt LAMP stack với PHP 8.1"
 
-# Thiết lập và cấu hình dịch vụ
-sudo ./shellai.sh setup wordpress
+# Kiểm tra dịch vụ
+./ai check mysql -m "Kiểm tra trạng thái MySQL"
 
-# Sửa lỗi dịch vụ
-sudo ./shellai.sh fix mysql -m "MySQL không kết nối được"
+# Tạo file mới
+./ai create file index.html -m "Tạo trang web đơn giản"
 
-# Yêu cầu tùy chỉnh
-sudo ./shellai.sh -m "Tạo và cấu hình virtual host cho domain example.com"
+# Chế độ chat
+./ai chat
 
-# Không xóa file sau khi thực thi
-sudo ./shellai.sh fix nginx --no-cleanup
+# Chế độ phát triển (dev)
+./ai dev
 
 # Cấu hình Shell.AI
-sudo ./shellai.sh config
+./ai config
 
 # Hiển thị trợ giúp
-./shellai.sh help
+./ai help
 ```
 
 ### Các tùy chọn
 
 | Tùy chọn | Mô tả |
 |----------|-------|
-| `-m`, `--message`, `-c`, `--comment` | Chỉ định nội dung yêu cầu cụ thể |
-| `--no-cleanup` | Không xóa file sau khi hoàn thành tác vụ |
-| `--cleanup` | Xóa file sau khi hoàn thành tác vụ (mặc định) |
+| `-m`, `--message` | Chỉ định nội dung yêu cầu cụ thể |
+| `--debug` | Hiển thị thông tin debug |
 | `-h`, `--help` | Hiển thị trợ giúp |
+
+## Chế độ phát triển (Dev Mode)
+
+Chế độ phát triển là một tính năng mới trong phiên bản JavaScript của Shell.AI. Chế độ này cho phép:
+
+- Chat với AI và lưu trữ lịch sử trò chuyện
+- Thực thi script khi cần thiết
+- Tạo file mới dựa trên yêu cầu
+- Kiểm tra và cài đặt thư viện tự động nếu cần
+
+Để sử dụng chế độ phát triển:
+
+```bash
+./ai dev
+```
+
+Trong chế độ dev, bạn có thể:
+- Nhập "help" để xem hướng dẫn sử dụng
+- Nhập "exit" để thoát chế độ dev
+
+## Cấu hình Shell.AI Client
+
+Shell.AI client lưu trữ cấu hình tại `$HOME/.shellai_config.json`. Bạn có thể chỉnh sửa file này trực tiếp hoặc sử dụng lệnh `./ai config` để cấu hình.
+
+Các thông số cấu hình:
+- `API_URL`: URL của API server (mặc định: http://localhost:3000/api/agent)
+- `SHELL_DIR`: Thư mục lưu trữ các script (mặc định: ./src/shell)
+- `DEBUG`: Chế độ debug (mặc định: false)
+
+Để cấu hình theo kiểu tương tác:
+
+```bash
+./ai config
+```
+
+Sau đó nhập "edit" để chỉnh sửa từng mục cấu hình một cách tương tác.
+
+## Định dạng phản hồi JSON mới
+
+Phiên bản JavaScript của Shell.AI sử dụng định dạng phản hồi JSON mới với cấu trúc:
+
+```json
+{
+  "action": "run|create|show",
+  "message": "Thông điệp từ AI",
+  "script": {
+    "filename": "tên_file.js",
+    "content": "nội dung script",
+    "type": "js|sh|py|php",
+    "description": "mô tả script",
+    "prepare": "lệnh cài đặt thư viện nếu cần"
+  }
+}
+```
 
 ## Cách hoạt động
 
-1. Người dùng gửi yêu cầu thông qua lệnh shell
-2. Shell.AI client gửi yêu cầu đến server API (có thể là từ xa)
+1. Người dùng gửi yêu cầu thông qua lệnh shell (shellai.js hoặc ai)
+2. Shell.AI client gửi yêu cầu đến server API
 3. Server API gửi prompt đến ChatGPT để tạo script
 4. ChatGPT trả về thông tin về các file cần tạo
 5. Server API phân tích phản hồi và trả về thông tin về các file
@@ -190,154 +225,27 @@ sudo ./shellai.sh config
 8. Nếu gặp lỗi, Shell.AI sẽ hỏi người dùng có muốn sửa lỗi không
 9. Nếu đồng ý, Shell.AI sẽ gửi yêu cầu sửa lỗi đến server API
 10. Quá trình lặp lại cho đến khi vấn đề được giải quyết
-11. Sau khi hoàn thành, file sẽ tự động được dọn dẹp (trừ khi sử dụng `--no-cleanup`)
+11. Sau khi hoàn thành, file sẽ tự động được dọn dẹp
 
-## Cấu hình Shell.AI Client
+## Cấu trúc dự án
 
-Shell.AI client lưu trữ cấu hình tại `$HOME/.shellai_config`. Bạn có thể chỉnh sửa file này trực tiếp hoặc sử dụng lệnh `sudo ./shellai.sh config` để cấu hình.
-
-Các thông số cấu hình:
-- `API_URL`: URL của API server (mặc định: http://localhost:3000/api/agent)
-- `SHELL_DIR`: Thư mục lưu trữ các script (mặc định: $HOME/.shellai)
-- `CLEANUP`: Tự động xóa file sau khi hoàn thành (mặc định: true)
-
-## Triển khai lên môi trường sản xuất
-
-### Triển khai API Server
-
-1. Chuẩn bị server:
-   - Cài đặt Node.js, npm và PM2
-   - Cài đặt Nginx (hoặc Apache) để làm reverse proxy
-
-2. Cấu hình Nginx làm reverse proxy cho API server:
-
-```nginx
-server {
-    listen 80;
-    server_name api.shellai.yourdomain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-3. Cấu hình SSL với Let's Encrypt:
-
-```bash
-sudo certbot --nginx -d api.shellai.yourdomain.com
-```
-
-4. Khởi động API server với PM2:
-
-```bash
-npm run pm2:start:prod
-pm2 startup
-pm2 save
-```
-
-### Triển khai Shell Client
-
-Chỉ cần cấu hình Shell Client để trỏ đến API server đã triển khai:
-
-```bash
-sudo ./shellai.sh config
-# Nhập URL: https://api.shellai.yourdomain.com/api/agent
-```
-
-## Ví dụ thực tế
-
-### 1. Cài đặt LAMP stack
-
-```bash
-sudo ./shellai.sh -m "Cài đặt LAMP stack (Linux, Apache, MySQL, PHP) với PHP phiên bản mới nhất, cấu hình cơ bản cho bảo mật và hiệu suất"
-```
-
-### 2. Sửa lỗi MySQL
-
-```bash
-sudo ./shellai.sh fix mysql -m "MySQL không khởi động được, báo lỗi 'Can't connect to local MySQL server through socket'"
-```
-
-### 3. Tạo virtual host cho Nginx
-
-```bash
-sudo ./shellai.sh -m "Tạo virtual host cho domain example.com, webroot /var/www/example.com, với HTTPS và auto-redirect từ HTTP"
-```
-
-### 4. Cấu hình tường lửa
-
-```bash
-sudo ./shellai.sh -m "Cấu hình tường lửa UFW để mở cổng 80, 443, 22 và đóng tất cả các cổng còn lại"
-```
-
-## Cấu trúc thư mục
-
-### API Server
 ```
 shell.ai/
 ├── src/
-│   ├── config/       # Cấu hình ứng dụng
-│   ├── controllers/  # Xử lý logic nghiệp vụ
-│   ├── routes/       # Định nghĩa API endpoints
-│   ├── services/     # Các dịch vụ (OpenAI, file, ...)
-│   ├── shell/        # Thư mục chứa các script được tạo (khi chạy cùng với server)
-│   └── server.js     # Điểm vào của ứng dụng
-├── ecosystem.config.js # Cấu hình PM2
-├── .env              # Biến môi trường
-├── package.json      # Quản lý phụ thuộc
-├── shellai.sh        # Script chính để người dùng tương tác
-└── README.md         # Tài liệu hướng dẫn
+│   ├── config/         # Cấu hình ứng dụng
+│   ├── controllers/    # Xử lý logic nghiệp vụ
+│   ├── models/         # Mô hình dữ liệu
+│   ├── routes/         # Định nghĩa các route API
+│   ├── services/       # Các dịch vụ
+│   ├── shell/          # Thư mục chứa các script được tạo
+│   └── utils/          # Tiện ích
+│       ├── shellai_functions.js  # Các hàm tiện ích cho JavaScript
+│       └── chatHistory.js        # Quản lý lịch sử trò chuyện
+├── shellai.js          # Script JavaScript chính
+├── ai                  # Symlink ngắn gọn đến shellai.js
+├── .env                # Biến môi trường
+└── package.json        # Cấu hình npm
 ```
-
-### Shell Client
-```
-$HOME/
-├── .shellai/         # Thư mục chứa các script được tạo (mặc định)
-└── .shellai_config   # File cấu hình
-```
-
-## Vấn đề thường gặp
-
-### 1. Không thể kết nối đến API server
-
-Đảm bảo API server đang chạy và URL đã cấu hình đúng trong `$HOME/.shellai_config`.
-
-```bash
-sudo ./shellai.sh config
-```
-
-### 2. Lỗi quyền truy cập
-
-Shell.AI cần quyền sudo để thực thi nhiều loại tác vụ hệ thống. Đảm bảo chạy với sudo.
-
-### 3. Tùy chỉnh prompt
-
-Nếu bạn muốn tùy chỉnh cách AI tạo script, bạn có thể chỉnh sửa file `src/controllers/agent.controller.js` và thay đổi prompt trong hàm `processIssue`.
-
-### 4. PM2 không giữ ứng dụng chạy sau khi khởi động lại server
-
-Đảm bảo bạn đã chạy các lệnh:
-
-```bash
-pm2 startup
-pm2 save
-```
-
-## Đóng góp
-
-Mọi đóng góp đều được hoan nghênh! Vui lòng mở issue hoặc pull request để đóng góp cho dự án.
-
-1. Fork dự án
-2. Tạo nhánh tính năng (`git checkout -b feature/amazing-feature`)
-3. Commit thay đổi (`git commit -m 'Add amazing feature'`)
-4. Push nhánh (`git push origin feature/amazing-feature`)
-5. Mở Pull Request
 
 ## Giấy phép
 

@@ -16,4 +16,11 @@ router.post('/process', agentController.processIssue);
  */
 router.post('/fix', agentController.fixScriptError);
 
+/**
+ * @route POST /api/agent/chat
+ * @desc Xử lý yêu cầu chat
+ * @access Public
+ */
+router.post('/chat', agentController.handleChat);
+
 module.exports = router; 
