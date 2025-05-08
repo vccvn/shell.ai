@@ -89,23 +89,42 @@ npm run pm2:start:prod
 
 ### Cài đặt Shell Client (JavaScript)
 
-1. Cấp quyền thực thi cho file shellai.js:
+1. Cài đặt Node.js và npm nếu chưa có:
 
 ```bash
-chmod +x shellai.js
+# Trên Ubuntu/Debian
+sudo apt update
+sudo apt install nodejs npm
+
+# Trên macOS với Homebrew
+brew install node
 ```
 
-2. Tạo lệnh ngắn gọn (tùy chọn):
+2. Sử dụng một trong hai cách sau để chạy Shell.AI:
+
+#### Cách 1: Sử dụng shellai.sh (Khuyến nghị cho Linux/macOS)
 
 ```bash
-ln -sf shellai.js ai
+chmod +x shellai.sh
+./shellai.sh config
+```
+
+#### Cách 2: Sử dụng Node.js trực tiếp
+
+```bash
+node shellai.js config
+```
+
+3. Tạo lệnh ngắn gọn (tùy chọn):
+
+```bash
+# Nếu sử dụng shellai.sh
+ln -sf shellai.sh ai
 chmod +x ai
-```
 
-3. Cấu hình Shell Client:
-
-```bash
-./shellai.js config
+# Nếu sử dụng Node.js trực tiếp
+echo '#!/bin/bash\nnode "$(dirname "$0")/shellai.js" "$@"' > ai
+chmod +x ai
 ```
 
 ## Sử dụng
@@ -113,42 +132,50 @@ chmod +x ai
 ### Cú pháp cơ bản
 
 ```bash
-# Cấu trúc chung
-./shellai.js [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
+# Sử dụng shellai.sh
+./shellai.sh [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
+
+# Hoặc sử dụng Node.js trực tiếp
+node shellai.js [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
 
 # Hoặc sử dụng lệnh ngắn gọn
 ./ai [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
-
-# Sử dụng trực tiếp với yêu cầu
-./ai -m "yêu cầu của bạn"
 ```
 
 ### Các lệnh hỗ trợ
 
 ```bash
 # Cài đặt các công cụ
-./ai install nginx php mysql
+./shellai.sh install nginx php mysql
+# hoặc
+node shellai.js install nginx php mysql
 
 # Cài đặt với yêu cầu cụ thể
-./ai install -m "Cài đặt LAMP stack với PHP 8.1"
+./shellai.sh install -m "Cài đặt LAMP stack với PHP 8.1"
 
 # Kiểm tra dịch vụ
-./ai check mysql -m "Kiểm tra trạng thái MySQL"
+./shellai.sh check mysql -m "Kiểm tra trạng thái MySQL"
 
 # Tạo file mới
-./ai create file index.html -m "Tạo trang web đơn giản"
+./shellai.sh create file index.html -m "Tạo trang web đơn giản"
 
 # Chế độ chat
-./ai chat
+./shellai.sh chat
+# hoặc
+node shellai.js chat
 
 # Chế độ phát triển (dev)
-./ai dev
+./shellai.sh dev
+# hoặc
+node shellai.js dev
 
 # Cấu hình Shell.AI
-./ai config
+./shellai.sh config
+# hoặc
+node shellai.js config
 
 # Hiển thị trợ giúp
-./ai help
+./shellai.sh help
 ```
 
 ### Các tùy chọn
@@ -171,7 +198,9 @@ Chế độ phát triển là một tính năng mới trong phiên bản JavaScr
 Để sử dụng chế độ phát triển:
 
 ```bash
-./ai dev
+./shellai.sh dev
+# hoặc
+node shellai.js dev
 ```
 
 Trong chế độ dev, bạn có thể:
@@ -180,20 +209,13 @@ Trong chế độ dev, bạn có thể:
 
 ## Cấu hình Shell.AI Client
 
-Shell.AI client lưu trữ cấu hình tại `$HOME/.shellai_config.json`. Bạn có thể chỉnh sửa file này trực tiếp hoặc sử dụng lệnh `./ai config` để cấu hình.
-
-Các thông số cấu hình:
-- `API_URL`: URL của API server (mặc định: http://localhost:3000/api/agent)
-- `SHELL_DIR`: Thư mục lưu trữ các script (mặc định: ./src/shell)
-- `DEBUG`: Chế độ debug (mặc định: false)
-
-Để cấu hình theo kiểu tương tác:
+Shell.AI client lưu trữ cấu hình tại `$HOME/.shellai_config.json`. Bạn có thể chỉnh sửa file này trực tiếp hoặc sử dụng lệnh cấu hình để thiết lập:
 
 ```bash
-./ai config
+./shellai.sh config
+# hoặc
+node shellai.js config
 ```
-
-Sau đó nhập "edit" để chỉnh sửa từng mục cấu hình một cách tương tác.
 
 ## Định dạng phản hồi JSON mới
 
@@ -253,7 +275,7 @@ ISC
 
 ## Tác giả
 
-Dự án được phát triển bởi [Your Name](https://github.com/username)
+Dự án được phát triển bởi [Doanln](https://github.com/vccvn)
 
 ---
 
