@@ -166,7 +166,7 @@ async function processIssue(req, res) {
       ${target ? `Đích: ${target}` : ''}
       
       Lưu ý: 
-      1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết.
+      1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
       2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
       3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('Executing: ls -la')
       4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'
@@ -180,7 +180,7 @@ async function processIssue(req, res) {
         "message": "Giải thích ngắn gọn về script",
         "script": {
           "filename": "tên_file.js",
-          "content": "nội dung file đầy đủ, không bị cắt ngắn",
+          "content": "nội dung file đầy đủ, không bị cắt ngắn. trước khi thực thi, cần in ra màn hình lệnh đó để người dùng biết",
           "type": "js",
           "description": "mô tả ngắn về tác dụng của file",
           "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
@@ -188,6 +188,7 @@ async function processIssue(req, res) {
       }
       
       KHÔNG bao gồm backticks (\`\`\`) hoặc bất kỳ định dạng markdown nào khác trong phản hồi. Chỉ trả về đối tượng JSON thuần túy.
+
       `;
     }
     
@@ -443,7 +444,7 @@ async function handleChat(req, res) {
         "message": "Nội dung chat hoặc nội dung cần hiển thị với người dùng",
         "script": {
             "filename": "tên_file.js",
-            "content": "nội dung file đầy đủ, không bị cắt ngắn",
+            "content": "nội dung file đầy đủ, không bị cắt ngắn. trước khi thực thi, cần in ra màn hình lệnh đó để người dùng biết, thực thi gặp lỗi phải hiển thị lỗi",
             "type": "js",
             "description": "mô tả ngắn về tác dụng của file",
             "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
@@ -452,12 +453,22 @@ async function handleChat(req, res) {
       
       Nếu không cần tạo script, chỉ cần trả về action là "chat" và message là nội dung phản hồi, không cần trường script.
       Nếu cần tạo script để thực thi, hãy đặt action là "run", message là giải thích, và script là thông tin file cần tạo.
+          Lưu ý: 
+          1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
+          2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
+          3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('Executing: ls -la')
+          4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'
+          5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('Executing: ls -la')
+          6. Đảm bảo xử lý lỗi đầy đủ trong script, hiển thị thông báo lỗi phù hợp.
+          
       Nếu cần tạo file nhưng không thực thi, hãy đặt action là "create".
       
       QUAN TRỌNG: Trả về JSON hợp lệ, không sử dụng backticks trong phản hồi JSON.
       KHÔNG bao gồm bất kỳ văn bản nào trước hoặc sau đối tượng JSON.
       KHÔNG sử dụng định dạng markdown hoặc code block (\`\`\`) trong phản hồi.
       CHỈ trả về đối tượng JSON thuần túy.
+      
+      
       `;
     } else {
       prompt = `
