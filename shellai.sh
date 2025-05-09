@@ -71,27 +71,23 @@ process_response() {
   local response="$1"
   
   # Kiểm tra phản hồi có dạng JSON hay không
-  if ! echo "$response" | grep -q '^{.*}$'; then
+  if ! (echo "$response" | jq '.' > /dev/null 2>&1); then
     error_log "Phản hồi không hợp lệ từ API"
     debug_log "Phản hồi nhận được: $response"
     return 1
   fi
   
   # Kiểm tra xem có lỗi không
-  if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
-    error_message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-    if [ -n "$error_message" ]; then
-      error_log "Lỗi API: $error_message"
-    else
-      error_log "Lỗi không xác định từ API"
-    fi
+  if echo "$response" | jq -e '.success == false' > /dev/null 2>&1; then
+    error_message=$(echo "$response" | jq -r '.message // "Lỗi không xác định từ API"')
+    error_log "Lỗi API: $error_message"
     debug_log "Phản hồi đầy đủ: $response"
     return 1
   fi
   
   # Trích xuất action, message và script từ phản hồi
-  action=$(echo "$response" | grep -o '"action"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-  message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+  action=$(echo "$response" | jq -r '.action // ""')
+  message=$(echo "$response" | jq -r '.message // ""')
   
   # Hiển thị thông báo nếu có
   if [ -n "$message" ]; then
@@ -109,11 +105,11 @@ process_response() {
   case "$action" in
     "run")
       # Trích xuất thông tin script
-      filename=$(echo "$response" | grep -o '"filename"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      content=$(echo "$response" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      type=$(echo "$response" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      description=$(echo "$response" | grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      prepare=$(echo "$response" | grep -o '"prepare"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      filename=$(echo "$response" | jq -r '.script.filename // ""')
+      content=$(echo "$response" | jq -r '.script.content // ""')
+      type=$(echo "$response" | jq -r '.script.type // ""')
+      description=$(echo "$response" | jq -r '.script.description // ""')
+      prepare=$(echo "$response" | jq -r '.script.prepare // ""')
       
       # Kiểm tra install dependencies trước
       if [ -n "$prepare" ]; then
@@ -157,10 +153,10 @@ process_response() {
       
     "create")
       # Trích xuất thông tin script
-      filename=$(echo "$response" | grep -o '"filename"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      content=$(echo "$response" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      type=$(echo "$response" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
-      description=$(echo "$response" | grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      filename=$(echo "$response" | jq -r '.script.filename // ""')
+      content=$(echo "$response" | jq -r '.script.content // ""')
+      type=$(echo "$response" | jq -r '.script.type // ""')
+      description=$(echo "$response" | jq -r '.script.description // ""')
       
       # Tạo file
       file_path="$filename"
@@ -213,7 +209,7 @@ chat_mode() {
     process_response "$response"
     
     # Trích xuất tin nhắn từ phản hồi
-    message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+    message=$(echo "$response" | jq -r '.message // ""')
     
     # Xử lý ký tự đặc biệt trong tin nhắn của AI
     message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
@@ -277,7 +273,7 @@ Bạn có thể:
     process_response "$response"
     
     # Trích xuất tin nhắn từ phản hồi
-    message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+    message=$(echo "$response" | jq -r '.message // ""')
     
     # Xử lý ký tự đặc biệt trong tin nhắn của AI
     message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')

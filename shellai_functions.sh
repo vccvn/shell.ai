@@ -211,7 +211,6 @@ send_api_request() {
   local endpoint="$1"
   local data="$2"
   
-  
   # Tạo headers với API keys
   local headers="-H \"Content-Type: application/json\""
   
@@ -236,7 +235,54 @@ send_api_request() {
   
   debug_log "Nhận phản hồi: $response"
   
+  # Kiểm tra nếu jq có sẵn để xử lý JSON
+  if command -v jq &> /dev/null && [[ "$response" == *"\"script\""* && "$response" == *"\"content\""* ]]; then
+    debug_log "Phát hiện nội dung script trong phản hồi, xử lý các ký tự escape"
+    
+    # Trích xuất và xử lý nội dung script
+    local script_content=$(echo "$response" | jq -r '.script.content // empty')
+    
+    if [[ -n "$script_content" ]]; then
+      # Xử lý script content
+      local processed_content=$(process_script_content "$script_content")
+      
+      # Tạo phản hồi mới với nội dung đã xử lý
+      response=$(echo "$response" | jq --arg content "$processed_content" '.script.content = $content')
+      
+      debug_log "Đã xử lý nội dung script trong phản hồi"
+    fi
+  elif [[ "$response" == *"\"script\""* && "$response" == *"\"content\""* ]]; then
+    # Nếu không có jq, giữ nguyên phản hồi nhưng thông báo để xử lý ở bước tạo file
+    debug_log "Không có jq để xử lý JSON. Nội dung script sẽ được xử lý khi tạo file."
+  fi
+  
   echo "$response"
+}
+
+# Hàm xử lý các ký tự escape trong nội dung script
+process_script_content() {
+  local content="$1"
+  
+  # Thay thế các chuỗi \n thành ký tự xuống dòng thực tế
+  # Sử dụng printf để xử lý escape sequences
+  # Nếu nội dung chứa nhiều dấu escape, sử dụng printf
+  if [[ "$content" == *\\n* || "$content" == *\\t* || "$content" == *\\r* ]]; then
+    debug_log "Phát hiện ký tự escape trong nội dung, đang xử lý..."
+    # Đảm bảo dấu \ được bảo vệ
+    # Lưu ý: phải thay thế dấu gạch chéo trước để tránh xung đột
+    content="${content//\\/\\\\}"  # Thay thế \ thành \\
+    content="${content//\\\\\\\\/\\\\}"  # Sửa lại các trường hợp \\ đã bị thay thành \\\\
+    
+    # Sau đó thay thế các chuỗi escape để printf xử lý
+    content="${content//\\\\n/\\n}"  # Thay thế \\n thành \n
+    content="${content//\\\\t/\\t}"  # Thay thế \\t thành \t
+    content="${content//\\\\r/\\r}"  # Thay thế \\r thành \r
+    
+    # Sử dụng printf để xử lý các escape sequences
+    content=$(printf "%b" "$content")
+  fi
+  
+  echo "$content"
 }
 
 # Hàm xử lý yêu cầu từ người dùng
@@ -350,8 +396,11 @@ create_file() {
   # Đảm bảo thư mục cha tồn tại
   mkdir -p "$(dirname "$file_path")"
   
-  # Ghi nội dung vào file
-  echo "$content" > "$file_path"
+  # Xử lý nội dung script để thay thế các ký tự escape
+  local processed_content=$(process_script_content "$content")
+  
+  # Ghi nội dung đã xử lý vào file
+  echo "$processed_content" > "$file_path"
   
   # Nếu là script, đặt quyền thực thi
   if [ "$file_type" = "sh" ] || [ "$file_type" = "py" ]; then
