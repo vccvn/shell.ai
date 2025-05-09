@@ -60,6 +60,34 @@ async function createFile(fileInfo) {
 }
 
 /**
+ * Đọc nội dung file
+ * @param {string} filePath - Đường dẫn đến file cần đọc
+ * @returns {Promise<string>} - Nội dung file
+ */
+async function readFile(filePath) {
+  try {
+    // Kiểm tra xem đường dẫn có phải tương đối không
+    const resolvedPath = path.isAbsolute(filePath) 
+      ? filePath 
+      : path.join(config.shellDir, filePath);
+    
+    // Kiểm tra file tồn tại
+    if (!await fs.pathExists(resolvedPath)) {
+      throw new Error(`File không tồn tại: ${resolvedPath}`);
+    }
+    
+    // Đọc nội dung file
+    const content = await fs.readFile(resolvedPath, 'utf8');
+    console.log(`Đã đọc file: ${resolvedPath}`);
+    
+    return content;
+  } catch (error) {
+    console.error('Lỗi khi đọc file:', error);
+    throw new Error(`Lỗi đọc file: ${error.message}`);
+  }
+}
+
+/**
  * Thực thi file script với các tham số
  * @param {string} filePath - Đường dẫn đến file cần thực thi
  * @param {Array<string>} args - Các tham số truyền vào script
@@ -122,6 +150,8 @@ async function cleanupFile(filePath) {
 
 module.exports = {
   createFile,
+  readFile,
   executeFile,
-  cleanupFile
+  cleanupFile,
+  processScriptContent
 }; 

@@ -600,6 +600,65 @@ async function installDependencies(prepareCommands) {
   }
 }
 
+/**
+ * Phân tích file hoặc thông báo lỗi và đưa ra giải pháp
+ * @param {string} filePath - Đường dẫn đến file cần phân tích
+ * @param {string} errorMessage - Thông báo lỗi cần phân tích
+ * @param {string} context - Thông tin bổ sung cho việc phân tích
+ * @param {Object} config - Cấu hình
+ * @returns {Object} Phản hồi từ API
+ */
+async function analyzeFileOrError(filePath, errorMessage, context, config) {
+  try {
+    // Thu thập thông tin hệ thống
+    const systemInfo = await getSystemInfo();
+    
+    // Đọc nội dung file nếu có
+    let fileContent = '';
+    if (filePath) {
+      try {
+        fileContent = await fs.readFile(filePath, 'utf8');
+        if (config && config.DEBUG) {
+          console.error(`[DEBUG] Đã đọc nội dung file: ${filePath}`);
+        }
+      } catch (error) {
+        console.error(`Lỗi khi đọc file ${filePath}: ${error.message}`);
+        return {
+          success: false,
+          message: `Không thể đọc file: ${error.message}`
+        };
+      }
+    }
+    
+    // Tạo dữ liệu gửi đi
+    const requestData = {
+      file_path: filePath,
+      file_content: fileContent,
+      suggest_type: 'sh',
+      system_info: systemInfo
+    };
+    
+    // Thêm thông báo lỗi nếu có
+    if (errorMessage) {
+      requestData.error_message = errorMessage;
+    }
+    
+    // Thêm bối cảnh nếu có
+    if (context) {
+      requestData.context = context;
+    }
+    
+    // Gửi yêu cầu phân tích tới API
+    return await sendApiRequest('analyze', requestData, config);
+  } catch (error) {
+    console.error(`Lỗi khi phân tích file/lỗi: ${error.message}`);
+    return {
+      success: false,
+      message: `Lỗi: ${error.message}`
+    };
+  }
+}
+
 module.exports = {
   getSystemInfo,
   sendApiRequest,
@@ -608,5 +667,6 @@ module.exports = {
   handleChat,
   createFile,
   executeFile,
-  installDependencies
+  installDependencies,
+  analyzeFileOrError
 }; 

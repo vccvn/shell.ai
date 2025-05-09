@@ -245,10 +245,14 @@ dev_mode() {
   exit          - Thoát khỏi chế độ dev
   help          - Hiển thị trợ giúp này
   clear         - Xóa lịch sử chat
+  analyze <file> - Phân tích nội dung file
+  phân tích <file> - Phân tích nội dung file
+  đọc <file>    - Đọc và phân tích nội dung file
   
 Bạn có thể:
 - Đặt câu hỏi với AI
 - Yêu cầu AI tạo script để thực hiện tác vụ
+- Yêu cầu AI phân tích file hoặc thông báo lỗi
 - Yêu cầu AI sửa lỗi trong code của bạn"
       continue
     fi
@@ -257,6 +261,40 @@ Bạn có thể:
     if [[ "$user_input" == "clear" ]]; then
       history='[]'
       info_log "Đã xóa lịch sử chat."
+      continue
+    fi
+    
+    # Kiểm tra các lệnh phân tích file
+    if [[ "$user_input" =~ ^(analyze|phân\ tích|đọc)\ +(.+)$ ]]; then
+      # Trích xuất đường dẫn file từ lệnh
+      file_path="${BASH_REMATCH[2]}"
+      file_path=$(echo "$file_path" | xargs) # Loại bỏ khoảng trắng thừa
+      
+      info_log "Phân tích file: $file_path"
+      
+      # Gọi hàm phân tích file
+      analyze_response=$(analyze_file_or_error "$file_path" "" "Phân tích file theo yêu cầu của người dùng")
+      
+      # Kiểm tra nếu có lỗi
+      if [[ $? -ne 0 ]]; then
+        error_log "Không thể phân tích file. Vui lòng kiểm tra đường dẫn."
+        continue
+      fi
+      
+      # Xử lý phản hồi từ API
+      process_response "$analyze_response"
+      
+      # Trích xuất tin nhắn từ phản hồi
+      message=$(echo "$analyze_response" | jq -r '.message // ""')
+      
+      # Xử lý ký tự đặc biệt trong tin nhắn của AI
+      message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+      
+      # Cập nhật lịch sử chat với phản hồi của AI
+      if [ -n "$message" ]; then
+        history=$(echo "$history" | jq ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
+      fi
+      
       continue
     fi
     
@@ -485,20 +523,12 @@ main() {
         exit 1
       fi
       
-      # Tạo nội dung yêu cầu
-      if [ -z "$MESSAGE" ]; then
-        MESSAGE="Kiểm tra trạng thái dịch vụ: ${PARAMS[*]}"
-      fi
+      # Sử dụng hàm check_service mới
+      service_name=${PARAMS[0]}
+      additional_info=${PARAMS[*]:1}  # Lấy tất cả các tham số còn lại
       
-      # Gửi yêu cầu với action = run
-      response=$(process_request "$MESSAGE" "run" "check" "")
-      if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
-        # Nếu có lỗi, chuyển sang chế độ offline
-        warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
-        process_offline_command "$COMMAND ${PARAMS[*]}" "check"
-      else
-        process_response "$response"
-      fi
+      info_log "Kiểm tra dịch vụ: $service_name"
+      check_service "$service_name" "$additional_info"
       ;;
       
     "create")

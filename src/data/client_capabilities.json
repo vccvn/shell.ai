@@ -1,0 +1,112 @@
+{
+  "version": "1.0",
+  "client_name": "shellai-cli",
+  "description": "Shell.AI Command Line Interface Client",
+  "capabilities": [
+    {
+      "name": "create_file",
+      "description": "Tạo file với nội dung và quyền thực thi nếu cần",
+      "parameters": {
+        "filename": "Tên file (bao gồm đường dẫn)",
+        "content": "Nội dung file",
+        "type": "Loại file (sh, js, py, ...)"
+      }
+    },
+    {
+      "name": "execute_file",
+      "description": "Thực thi file script với các tham số",
+      "parameters": {
+        "filename": "Tên file cần thực thi",
+        "args": "Mảng các tham số truyền vào script (tùy chọn)",
+        "type": "Loại file (sh, js, py, ...)"
+      }
+    },
+    {
+      "name": "read_file",
+      "description": "Đọc nội dung file",
+      "parameters": {
+        "file_path": "Đường dẫn đến file cần đọc"
+      }
+    },
+    {
+      "name": "check_service",
+      "description": "Kiểm tra trạng thái dịch vụ",
+      "parameters": {
+        "service_name": "Tên dịch vụ cần kiểm tra",
+        "additional_info": "Thông tin bổ sung (tùy chọn)"
+      },
+      "supported_services": [
+        "nginx",
+        "apache2",
+        "httpd", 
+        "mysql",
+        "postgresql",
+        "mongodb",
+        "redis",
+        "docker",
+        "php",
+        "node",
+        "python"
+      ]
+    },
+    {
+      "name": "analyze_file_or_error",
+      "description": "Phân tích file hoặc thông báo lỗi và đưa ra giải pháp",
+      "parameters": {
+        "file_path": "Đường dẫn đến file cần phân tích (tùy chọn)",
+        "error_message": "Thông báo lỗi cần phân tích (tùy chọn)",
+        "context": "Thông tin bổ sung (tùy chọn)"
+      }
+    },
+    {
+      "name": "install_dependencies",
+      "description": "Cài đặt các phụ thuộc cần thiết",
+      "parameters": {
+        "dependencies": "Chuỗi lệnh cài đặt phụ thuộc"
+      }
+    },
+    {
+      "name": "get_system_info",
+      "description": "Thu thập thông tin hệ thống",
+      "parameters": {}
+    }
+  ],
+  "response_format": {
+    "action": {
+      "type": "string",
+      "enum": ["run", "create", "chat", "show"],
+      "description": "Hành động cần thực hiện"
+    },
+    "message": {
+      "type": "string",
+      "description": "Thông báo cho người dùng"
+    },
+    "script": {
+      "type": "object",
+      "description": "Thông tin script nếu action là run hoặc create",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "Tên file script"
+        },
+        "content": {
+          "type": "string",
+          "description": "Nội dung script"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["sh", "js", "py", "php", "rb", "txt"],
+          "description": "Loại file"
+        },
+        "description": {
+          "type": "string",
+          "description": "Mô tả ngắn về script"
+        },
+        "prepare": {
+          "type": "string",
+          "description": "Lệnh cài đặt các phụ thuộc cần thiết"
+        }
+      }
+    }
+  }
+} 

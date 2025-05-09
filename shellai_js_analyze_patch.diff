@@ -1,0 +1,114 @@
+--- shellai.js.old
++++ shellai.js
+@@ -7,7 +7,8 @@
+   handleChat, 
+   createFile, 
+   executeFile, 
+-  installDependencies
++  installDependencies,
++  analyzeFileOrError
+ } = require('./src/utils/shellai_functions');
+
+@@ -907,10 +908,13 @@ async function devMode() {
+       if (input.trim().toLowerCase() === 'help') {
+         console.log(`Các lệnh có sẵn trong chế độ phát triển:
+   exit          - Thoát khỏi chế độ dev
+-  help          - Hiển thị trợ giúp này
+-  
++  help          - Hiển thị trợ giúp này 
++  analyze <file> - Phân tích nội dung file
++  phân tích <file> - Phân tích nội dung file
++  đọc <file>    - Đọc và phân tích nội dung file
++
+ Bạn có thể:
+ - Đặt câu hỏi với AI
++- Yêu cầu AI phân tích file hoặc thông báo lỗi
+ - Yêu cầu AI tạo script để thực hiện tác vụ
+ - Yêu cầu AI sửa lỗi trong code của bạn`);
+         askQuestion();
+@@ -925,6 +929,69 @@ Bạn có thể:
+         return;
+       }
+       
++      // Kiểm tra các lệnh phân tích file
++      const analyzeFileRegex = /^(analyze|phân tích|đọc)\s+(.+)$/i;
++      const analyzeMatches = input.match(analyzeFileRegex);
++      
++      if (analyzeMatches) {
++        const filePath = analyzeMatches[2].trim();
++        infoLog(`Phân tích file: ${filePath}`);
++        
++        try {
++          // Phân tích file
++          const analyzeResponse = await analyzeFileOrError(filePath, '', 'Phân tích file theo yêu cầu của người dùng', config);
++          
++          if (!analyzeResponse) {
++            errorLog('Không nhận được phản hồi từ API');
++            askQuestion();
++            return;
++          }
++          
++          if (analyzeResponse.success === false) {
++            errorLog(`Không thể phân tích file: ${analyzeResponse.message || 'Lỗi không xác định'}`);
++            askQuestion();
++            return;
++          }
++          
++          // Xử lý phản hồi - đối với script, cũng xử lý tương tự như devMode
++          const data = analyzeResponse.hasOwnProperty('data') ? analyzeResponse.data : analyzeResponse;
++          
++          // Hiển thị message nếu có
++          if (data.message) {
++            console.log(`\n${data.message}\n`);
++          }
++          
++          // Xử lý script nếu có
++          if (data.script && data.action === 'run') {
++            const { filename, content, type, description, prepare } = data.script;
++            
++            // Tạo đường dẫn file trong thư mục shell
++            const filePath = path.join(config.SHELL_DIR, filename);
++            
++            // Hỏi người dùng có muốn thực thi script không
++            rl.pause();
++            console.log(`\nAI đã tạo script ${filename}`);
++            console.log(`Mô tả: ${description || 'Script được tạo bởi AI'}`);
++            
++            const tempRl = readline.createInterface({
++              input: process.stdin,
++              output: process.stdout
++            });
++            
++            const shouldExecute = await new Promise(resolve => {
++              tempRl.question('Bạn có muốn thực thi script này không? (y/n): ', answer => {
++                tempRl.close();
++                resolve(answer.trim().toLowerCase().charAt(0) === 'y');
++              });
++            });
++            
++            rl.resume();
++            
++            if (shouldExecute) {
++              // Cài đặt các thư viện cần thiết nếu có
++              if (prepare) {
++                await installDependencies(prepare);
++              }
++              
++              // Tạo file
++              await createFile(filePath, content, type);
++              
++              // Thực thi file
++              await executeFile(filePath, type, '', description);
++            }
++          }
++          
++          askQuestion();
++          return;
++        } catch (error) {
++          errorLog(`Lỗi khi phân tích file: ${error.message}`);
++          askQuestion();
++          return;
++        }
++      }
++      
+       // Hiển thị thông báo đang xử lý 

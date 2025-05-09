@@ -92,118 +92,97 @@ check_jq() {
   fi
 }
 
-# Hàm lấy thông tin hệ thống
+# Hàm thu thập thông tin hệ thống
 get_system_info() {
-  raw_os_type=$(uname -s)
+  # Lấy thông tin hệ điều hành
+  os_type=$(uname -s)
   os_version=$(uname -r)
-  hostname=$(hostname)
-  user=$(whoami)
+  
+  # Lấy thông tin kiến trúc
   arch=$(uname -m)
   
-  # Xác định đúng tên hệ điều hành
-  if [[ "$raw_os_type" == "Darwin" ]]; then
-    os_type="macOS"
-    # Lấy phiên bản macOS chi tiết hơn
-    if command -v sw_vers &> /dev/null; then
-      os_version=$(sw_vers -productVersion)
-    fi
-  else
-    os_type="$raw_os_type"
-  fi
+  # Lấy hostname và username
+  hostname=$(hostname)
+  username=$(whoami)
   
   # Kiểm tra các package manager
   package_managers=""
   
-  if command -v apt-get &> /dev/null; then
-    package_managers+=" apt"
+  if command -v apt &> /dev/null; then
+    package_managers+="apt "
   fi
   
   if command -v yum &> /dev/null; then
-    package_managers+=" yum"
-  fi
-  
-  if command -v dnf &> /dev/null; then
-    package_managers+=" dnf"
+    package_managers+="yum "
   fi
   
   if command -v brew &> /dev/null; then
-    package_managers+=" brew"
+    package_managers+="brew "
   fi
   
   if command -v pacman &> /dev/null; then
-    package_managers+=" pacman"
+    package_managers+="pacman "
   fi
   
-  # Kiểm tra các ngôn ngữ lập trình
+  if command -v dnf &> /dev/null; then
+    package_managers+="dnf "
+  fi
+  
+  # Kiểm tra ngôn ngữ lập trình
   languages=""
   
   if command -v node &> /dev/null; then
-    node_version=$(node --version)
-    languages+=" Node.js:$node_version"
+    languages+="nodejs "
   fi
   
   if command -v python3 &> /dev/null; then
-    python_version=$(python3 --version | awk '{print $2}')
-    languages+=" Python:$python_version"
+    languages+="python "
   fi
   
   if command -v php &> /dev/null; then
-    php_version=$(php --version | head -n 1 | awk '{print $2}')
-    languages+=" PHP:$php_version"
-  fi
-  
-  if command -v java &> /dev/null; then
-    java_version=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}')
-    languages+=" Java:$java_version"
+    languages+="php "
   fi
   
   if command -v ruby &> /dev/null; then
-    ruby_version=$(ruby --version | awk '{print $2}')
-    languages+=" Ruby:$ruby_version"
+    languages+="ruby "
   fi
   
-  # Kiểm tra các web server
+  if command -v go &> /dev/null; then
+    languages+="go "
+  fi
+  
+  # Kiểm tra web server
   web_servers=""
   
   if command -v nginx &> /dev/null; then
-    web_servers+=" nginx"
+    web_servers+="nginx "
   fi
   
   if command -v apache2 &> /dev/null || command -v httpd &> /dev/null; then
-    web_servers+=" apache"
+    web_servers+="apache "
   fi
   
-  # Kiểm tra các database
+  # Kiểm tra database
   databases=""
   
   if command -v mysql &> /dev/null; then
-    databases+=" mysql"
+    databases+="mysql "
   fi
   
   if command -v psql &> /dev/null; then
-    databases+=" postgresql"
+    databases+="postgresql "
   fi
   
-  if command -v mongo &> /dev/null; then
-    databases+=" mongodb"
+  if command -v mongod &> /dev/null; then
+    databases+="mongodb "
   fi
   
   if command -v redis-cli &> /dev/null; then
-    databases+=" redis"
+    databases+="redis "
   fi
   
-  # Trả về định dạng JSON
-  echo "{
-    \"os_type\": \"$os_type\",
-    \"os_version\": \"$os_version\",
-    \"hostname\": \"$hostname\",
-    \"user\": \"$user\",
-    \"arch\": \"$arch\",
-    \"package_managers\": \"$package_managers\",
-    \"languages\": \"$languages\",
-    \"web_servers\": \"$web_servers\",
-    \"databases\": \"$databases\"
-  }"
+  # Trả về dưới dạng JSON
+  echo "{ \"os_type\": \"$os_type\", \"os_version\": \"$os_version\", \"arch\": \"$arch\", \"user\": \"$username\", \"hostname\": \"$hostname\", \"package_managers\": \"$package_managers\", \"languages\": \"$languages\", \"web_servers\": \"$web_servers\", \"databases\": \"$databases\" }"
 }
 
 # Hàm gửi yêu cầu đến API server
@@ -494,6 +473,176 @@ install_dependencies() {
   
   success_log "Đã cài đặt các thư viện thành công"
   return 0
+}
+
+# Hàm phân tích file hoặc lỗi chi tiết
+analyze_file_or_error() {
+  local file_path="$1"
+  local error_message="$2"
+  local context="$3"
+  
+  # Thu thập thông tin hệ thống
+  system_info=$(get_system_info)
+  
+  # Đọc nội dung file nếu có
+  local file_content=""
+  if [ -n "$file_path" ] && [ -f "$file_path" ]; then
+    file_content=$(cat "$file_path")
+    debug_log "Đã đọc nội dung file: $file_path"
+  elif [ -n "$file_path" ]; then
+    error_log "File không tồn tại: $file_path"
+    return 1
+  fi
+  
+  # Escape nội dung file để đưa vào JSON
+  if [ -n "$file_content" ]; then
+    file_content_escaped=$(echo "$file_content" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+  fi
+  
+  # Escape thông báo lỗi
+  if [ -n "$error_message" ]; then
+    error_message_escaped=$(echo "$error_message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+  fi
+  
+  # Escape bối cảnh
+  if [ -n "$context" ]; then
+    context_escaped=$(echo "$context" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+  fi
+  
+  # Tạo JSON data gửi đi
+  request_data="{
+    \"file_path\": \"$file_path\",
+    \"suggest_type\": \"sh\",
+    \"system_info\": $system_info"
+  
+  if [ -n "$file_content_escaped" ]; then
+    request_data+=",
+    \"file_content\": \"$file_content_escaped\""
+  fi
+  
+  if [ -n "$error_message_escaped" ]; then
+    request_data+=",
+    \"error_message\": \"$error_message_escaped\""
+  fi
+  
+  if [ -n "$context_escaped" ]; then
+    request_data+=",
+    \"context\": \"$context_escaped\""
+  fi
+  
+  request_data+="
+  }"
+  
+  debug_log "Gửi yêu cầu phân tích file/lỗi"
+  
+  # Gửi request
+  response=$(send_api_request "analyze" "$request_data")
+  
+  # Trả về response
+  echo "$response"
+}
+
+# Hàm kiểm tra dịch vụ hoặc phần mềm
+check_service() {
+  local service_name="$1"
+  local additional_info="$2"
+  
+  # Thực hiện các lệnh kiểm tra phụ thuộc vào loại dịch vụ
+  if command -v "$service_name" &> /dev/null; then
+    info_log "Đã tìm thấy lệnh $service_name trên hệ thống"
+    service_exists=true
+  else
+    warning_log "Không tìm thấy lệnh $service_name trên hệ thống"
+    service_exists=false
+  fi
+  
+  # Kiểm tra cụ thể hơn cho từng loại dịch vụ
+  case "$service_name" in
+    nginx)
+      # Kiểm tra cấu hình nginx
+      if $service_exists; then
+        info_log "Kiểm tra cấu hình nginx..."
+        nginx_output=$(nginx -t 2>&1)
+        nginx_status=$?
+        
+        if [ $nginx_status -eq 0 ]; then
+          success_log "Cấu hình nginx đúng"
+        else
+          error_log "Lỗi cấu hình nginx"
+        fi
+        
+        # Phân tích lỗi (nếu có) bằng AI
+        if [ $nginx_status -ne 0 ]; then
+          info_log "Phân tích lỗi nginx bằng AI..."
+          analyze_response=$(analyze_file_or_error "" "$nginx_output" "Kiểm tra cấu hình nginx bằng lệnh 'nginx -t'")
+          process_response "$analyze_response"
+        fi
+      else
+        # Hỏi xem có muốn cài đặt nginx không
+        read -p "Bạn có muốn cài đặt nginx không? (y/n): " install_answer
+        if [[ "$install_answer" == "y" ]]; then
+          # Gửi yêu cầu tạo script cài đặt
+          info_log "Tạo script cài đặt nginx..."
+          install_response=$(process_request "Cài đặt và cấu hình nginx" "run" "install" "")
+          process_response "$install_response"
+        fi
+      fi
+      ;;
+      
+    apache|apache2|httpd)
+      # Kiểm tra Apache
+      service_name_check="apache2"
+      if ! command -v "$service_name_check" &> /dev/null; then
+        service_name_check="httpd"
+      fi
+      
+      if command -v "$service_name_check" &> /dev/null; then
+        info_log "Kiểm tra cấu hình $service_name_check..."
+        apache_output=$($service_name_check -t 2>&1)
+        apache_status=$?
+        
+        if [ $apache_status -eq 0 ]; then
+          success_log "Cấu hình $service_name_check đúng"
+        else
+          error_log "Lỗi cấu hình $service_name_check"
+          # Phân tích lỗi bằng AI
+          info_log "Phân tích lỗi $service_name_check bằng AI..."
+          analyze_response=$(analyze_file_or_error "" "$apache_output" "Kiểm tra cấu hình $service_name_check")
+          process_response "$analyze_response"
+        fi
+      else
+        warning_log "$service_name_check không được cài đặt trên hệ thống"
+        # Hỏi xem có muốn cài đặt không
+        read -p "Bạn có muốn cài đặt $service_name_check không? (y/n): " install_answer
+        if [[ "$install_answer" == "y" ]]; then
+          # Gửi yêu cầu tạo script cài đặt
+          info_log "Tạo script cài đặt $service_name_check..."
+          install_response=$(process_request "Cài đặt và cấu hình $service_name_check" "run" "install" "")
+          process_response "$install_response"
+        fi
+      fi
+      ;;
+      
+    *)
+      # Kiểm tra chung cho các dịch vụ khác
+      if $service_exists; then
+        info_log "Kiểm tra chi tiết $service_name..."
+        # Gửi yêu cầu kiểm tra chi tiết dịch vụ
+        check_response=$(process_request "Kiểm tra chi tiết dịch vụ $service_name $additional_info" "run" "check" "")
+        process_response "$check_response"
+      else
+        warning_log "$service_name chưa được cài đặt"
+        # Hỏi xem có muốn cài đặt không
+        read -p "Bạn có muốn cài đặt $service_name không? (y/n): " install_answer
+        if [[ "$install_answer" == "y" ]]; then
+          # Gửi yêu cầu tạo script cài đặt
+          info_log "Tạo script cài đặt $service_name..."
+          install_response=$(process_request "Cài đặt và cấu hình $service_name" "run" "install" "")
+          process_response "$install_response"
+        fi
+      fi
+      ;;
+  esac
 }
 
 # Tải cấu hình

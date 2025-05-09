@@ -169,17 +169,17 @@ async function processIssue(req, res) {
       2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
       3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, 
          ví dụ: 
-         console.log('Executing: ls -la');
+         console.log('ls -la');
          exec('ls -la');
 
       4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi,
          ví dụ:
-         echo 'Executing: ls -la'
+         echo 'ls -la'
          ls -la
          
       5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, 
          ví dụ: 
-         print('Executing: ls -la')
+         print('ls -la')
          subprocess.run(["ls", "-la"],...)
          
       6. Đảm bảo xử lý lỗi đầy đủ trong script, hiển thị thông báo lỗi phù hợp.
@@ -470,13 +470,15 @@ async function handleChat(req, res) {
             ví dụ: muốn thực thi : exec(command) 
               thì console.log(command) trước sau đó mới thực thi exec(command)
             ví dụ: muốn thực thi : exec('ls -la')
-            thì console.log('Executing: ls -la') trước sau đó mới thực thi exec('ls -la')
-          4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'
+            thì console.log('ls -la') trước sau đó mới thực thi exec('ls -la')
+          4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'ls -la'
             ví dụ: muốn thực thi : ls -la
-            thì echo 'Executing: ls -la' trước sau đó mới thực thi ls -la
-          5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('Executing: ls -la')
+            thì echo 'ls -la' trước sau đó mới thực thi ls -la:
+            echo 'ls -la'
+            ls -la
+          5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('ls -la')
             ví dụ: muốn thực thi : subprocess.run(["ls", "-la"],...)
-            thì print('Executing: ls -la') trước sau đó mới thực thi subprocess.run(["ls", "-la"],...)
+            thì print('ls -la') trước sau đó mới thực thi subprocess.run(["ls", "-la"],...)
           5.5 tương tự với các ngôn ngữ khác, ví dụ: PHP, Ruby, ...
           6. Đảm bảo xử lý lỗi đầy đủ trong script, hiển thị thông báo lỗi phù hợp.
           
@@ -580,8 +582,142 @@ async function handleChat(req, res) {
   }
 }
 
+/**
+ * Phân tích file hoặc thông báo lỗi chi tiết
+ * @param {object} req - Express request object
+ * @param {object} res - Express response object
+ */
+async function analyzeFileOrError(req, res) {
+  try {
+    const { file_path, file_content, error_message, context, system_info, suggest_type } = req.body;
+    
+    if (!file_path && !file_content && !error_message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cần cung cấp ít nhất đường dẫn file, nội dung file hoặc thông báo lỗi'
+      });
+    }
+    
+    // Tạo thông tin hệ thống nếu có
+    let systemInfoPrompt = '';
+    if (system_info) {
+      systemInfoPrompt = "Thông tin hệ thống của người dùng:\\n" +
+        "- Hệ điều hành: " + system_info.os_type + " " + system_info.os_version + "\\n" +
+        "- Kiến trúc: " + system_info.arch + "\\n" +
+        "- Người dùng: " + system_info.user + "\\n" +
+        "- Hostname: " + system_info.hostname + "\\n" +
+        "- Package managers: " + system_info.package_managers + "\\n" +
+        "- Ngôn ngữ lập trình: " + system_info.languages + "\\n" +
+        "- Web servers: " + system_info.web_servers + "\\n" +
+        "- Databases: " + system_info.databases + "\\n";
+    }
+    
+    // Sử dụng nội dung file được gửi từ client
+    let fileContent = file_content || '';
+    
+    // Tạo prompt cho OpenAI
+    const prompt = `
+    Bạn là một AI chuyên gia về hệ thống và phát triển phần mềm. Hãy phân tích thông tin được cung cấp và đưa ra giải pháp.
+    
+    ${file_path ? `File đang xem xét: ${file_path}` : ''}
+    ${fileContent ? `\nNội dung file:\n\`\`\`\n${fileContent}\n\`\`\`` : ''}
+    ${error_message ? `\nThông báo lỗi:\n${error_message}` : ''}
+    ${context ? `\nThông tin bổ sung:\n${context}` : ''}
+    
+    ${systemInfoPrompt}
+    ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
+    
+    Dựa trên thông tin được cung cấp, hãy:
+    1. Phân tích kỹ vấn đề
+    2. Xác định nguyên nhân gốc rễ
+    3. Đề xuất giải pháp cụ thể
+
+    Nếu cần thiết, hãy tạo script để giải quyết vấn đề và thêm các lệnh cài đặt các phụ thuộc cần thiết.
+    
+    Hãy phản hồi CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
+    {
+      "action": "run", (hoặc "chat" nếu chỉ cần phản hồi văn bản)
+      "message": "Phân tích chi tiết về vấn đề và giải pháp đề xuất",
+      "script": {
+        "filename": "tên_file_phù_hợp.${suggest_type || 'sh'}",
+        "content": "nội dung script đầy đủ, không bị cắt ngắn, thêm các câu lệnh hiển thị trước khi thực thi",
+        "type": "${suggest_type || 'sh'}",
+        "description": "mô tả ngắn về tác dụng của script",
+        "prepare": "các lệnh cài đặt phụ thuộc (nếu cần)"
+      }
+    }
+    
+    Lưu ý: Chỉ trả về trường script nếu cần tạo script để sửa lỗi. Nếu chỉ cần phân tích và giải thích, hãy sử dụng action là "chat".
+    QUAN TRỌNG: Nếu tạo script, hãy thêm các dòng lệnh hiển thị để người dùng biết script đang làm gì.
+    
+    QUAN TRỌNG: Trả về JSON hợp lệ, không sử dụng backticks trong phản hồi JSON.
+    KHÔNG bao gồm bất kỳ văn bản nào trước hoặc sau đối tượng JSON.
+    KHÔNG sử dụng định dạng markdown hoặc code block (\`\`\`) trong phản hồi.
+    CHỈ trả về đối tượng JSON thuần túy.
+    `;
+    
+    // Gửi prompt tới OpenAI và nhận phản hồi
+    const aiResponse = await openaiService.getCompletion(prompt);
+    
+    try {
+      // Phân tích phản hồi JSON
+      let responseData;
+      
+      if (typeof aiResponse === 'string') {
+        try {
+          responseData = JSON.parse(aiResponse);
+        } catch (parseError) {
+          console.error('Lỗi khi parse JSON trực tiếp:', parseError.message);
+          
+          // Thử trích xuất JSON từ text
+          const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              responseData = JSON.parse(jsonMatch[0]);
+            } catch (matchParseError) {
+              return res.status(500).json({
+                success: false,
+                message: 'Không thể phân tích phản hồi từ AI',
+                error: matchParseError.message,
+                response: aiResponse
+              });
+            }
+          } else {
+            return res.status(500).json({
+              success: false,
+              message: 'Phản hồi từ AI không chứa JSON',
+              response: aiResponse
+            });
+          }
+        }
+      } else {
+        responseData = aiResponse;
+      }
+      
+      // Trả về phản hồi theo định dạng mới
+      return res.status(200).json(responseData);
+    } catch (error) {
+      console.error('Lỗi khi xử lý phản hồi:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Lỗi khi xử lý phản hồi từ AI',
+        error: error.message,
+        response: aiResponse
+      });
+    }
+  } catch (error) {
+    console.error('Lỗi khi phân tích file/lỗi:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   processIssue,
   fixScriptError,
-  handleChat
+  handleChat,
+  analyzeFileOrError
 }; 

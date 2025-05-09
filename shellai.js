@@ -12,7 +12,8 @@ const {
   executeFile, 
   installDependencies,
   getSystemInfo,
-  fixScriptError
+  fixScriptError,
+  analyzeFileOrError
 } = require('./src/utils/shellai_functions');
 
 const {

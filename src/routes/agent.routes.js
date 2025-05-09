@@ -1,3 +1,6 @@
+/**
+ * Routes cho các API endpoints của Agent
+ */
 const express = require('express');
 const router = express.Router();
 const agentController = require('../controllers/agent.controller');
@@ -23,5 +26,12 @@ router.post('/fix', apiKeyAuth, agentController.fixScriptError);
  * @access Private - Yêu cầu API key
  */
 router.post('/chat', apiKeyAuth, agentController.handleChat);
+
+/**
+ * @route POST /api/agent/analyze
+ * @desc Xử lý file hoặc lỗi nâng cao
+ * @access Private - Yêu cầu API key
+ */
+router.post('/analyze', apiKeyAuth, agentController.analyzeFileOrError);
 
 module.exports = router; 
