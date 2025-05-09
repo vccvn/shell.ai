@@ -1,10 +1,16 @@
 const { OpenAI } = require('openai');
 const config = require('../config');
 
-// Khởi tạo OpenAI client
-const openai = new OpenAI({
-  apiKey: config.openai.apiKey
-});
+/**
+ * Tạo instance OpenAI với API key hiện tại
+ * Lưu ý: API key có thể thay đổi trong quá trình xử lý request
+ * @returns {OpenAI} instance OpenAI API
+ */
+function createOpenAIClient() {
+  return new OpenAI({
+    apiKey: config.openai.apiKey
+  });
+}
 
 /**
  * Gửi prompt đến OpenAI API và nhận phản hồi
@@ -13,6 +19,14 @@ const openai = new OpenAI({
  */
 async function getCompletion(prompt) {
   try {
+    // Tạo mới OpenAI client với API key hiện tại
+    const openai = createOpenAIClient();
+    
+    // Kiểm tra nếu không có API key
+    if (!config.openai.apiKey) {
+      throw new Error('OpenAI API key không được cung cấp');
+    }
+    
     // Kiểm tra nếu prompt yêu cầu phản hồi JSON
     if (prompt.includes('dạng JSON') || prompt.includes('định dạng JSON')) {
       // Thêm hướng dẫn cụ thể về JSON vào cuối prompt
@@ -25,6 +39,8 @@ async function getCompletion(prompt) {
       CHỈ trả về đối tượng JSON thuần túy.`;
     }
 
+    console.log(`Sử dụng model: ${config.openai.model}`);
+    
     const response = await openai.chat.completions.create({
       model: config.openai.model,
       messages: [{ role: 'user', content: prompt }],

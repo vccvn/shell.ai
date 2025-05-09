@@ -7,3 +7,4 @@ src/shell/*
 !src/shell/.gitkeep 
 package-lock.json
 requirement.txt
+api.keys.json

@@ -33,7 +33,10 @@ const config = {
   API_URL: process.env.API_URL || 'http://localhost:3000/api/agent',
   SHELL_DIR: process.env.SHELL_DIR || './src/shell',
   DEBUG: process.env.DEBUG === 'true' || false,
-  FIRST_REQUEST: true
+  FIRST_REQUEST: true,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+  API_KEY: process.env.API_KEY || '',
+  MODEL: process.env.MODEL || 'gpt-4'
 };
 
 // Tạo thư mục shell nếu chưa tồn tại
@@ -137,9 +140,22 @@ function checkCurl() {
   } catch (error) {
     errorLog('curl chưa được cài đặt. Đang cài đặt...');
     try {
+      // Kiểm tra xem đang chạy trên macOS
       if (process.platform === 'darwin') {
+        // Kiểm tra xem Homebrew đã được cài đặt chưa
+        try {
+          execSync('brew --version', { stdio: 'ignore' });
+        } catch (brewError) {
+          // Homebrew chưa được cài đặt
+          errorLog('Homebrew chưa được cài đặt trên macOS. Vui lòng cài đặt Homebrew trước: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"');
+          process.exit(1);
+        }
+        
+        // Cài đặt curl qua Homebrew
+        infoLog('Đang cài đặt curl qua Homebrew...');
         execSync('brew install curl', { stdio: 'inherit' });
       } else if (process.platform === 'linux') {
+        // Xử lý trên Linux
         try {
           execSync('apt-get update && apt-get install -y curl', { stdio: 'inherit' });
         } catch (e) {
@@ -151,7 +167,7 @@ function checkCurl() {
           }
         }
       } else {
-        errorLog('Không thể cài đặt curl tự động trên hệ điều hành này. Vui lòng cài đặt thủ công.');
+        errorLog(`Không thể cài đặt curl tự động trên hệ điều hành ${process.platform}. Vui lòng cài đặt thủ công.`);
         process.exit(1);
       }
     } catch (installError) {
@@ -1188,15 +1204,60 @@ async function saveConfig(configData) {
 // Hàm đọc cấu hình
 async function loadConfig() {
   try {
+    // Đầu tiên, thử đọc từ file .env nếu có
+    let envConfig = {};
+    try {
+      const envFile = await fs.promises.readFile('.env', 'utf8');
+      envFile.split('\n').forEach(line => {
+        // Bỏ qua comment và dòng trống
+        if (line.trim() && !line.startsWith('#')) {
+          const parts = line.split('=');
+          if (parts.length >= 2) {
+            const key = parts[0].trim();
+            // Lấy phần còn lại của dòng (trong trường hợp giá trị chứa dấu =)
+            const value = parts.slice(1).join('=').trim();
+            // Xử lý giá trị trong dấu ngoặc kép
+            const processedValue = value.startsWith('"') && value.endsWith('"')
+              ? value.slice(1, -1)
+              : value;
+            
+            envConfig[key] = processedValue;
+          }
+        }
+      });
+    } catch (envError) {
+      // Không làm gì nếu không đọc được file .env
+    }
+    
+    // Sau đó, đọc từ file cấu hình user
     const configPath = path.join(os.homedir(), '.shellai_config.json');
-    const configData = await fs.promises.readFile(configPath, 'utf8');
-    return JSON.parse(configData);
+    let userConfig = {};
+    
+    try {
+      const configData = await fs.promises.readFile(configPath, 'utf8');
+      userConfig = JSON.parse(configData);
+    } catch (configError) {
+      // Không làm gì nếu không đọc được file cấu hình
+    }
+    
+    // Kết hợp cả hai nguồn cấu hình, ưu tiên userConfig
+    return {
+      API_URL: userConfig.API_URL || envConfig.API_URL || 'http://localhost:3000/api/agent',
+      SHELL_DIR: userConfig.SHELL_DIR || envConfig.SHELL_DIR || './src/shell',
+      DEBUG: userConfig.DEBUG !== undefined ? userConfig.DEBUG : (envConfig.DEBUG === 'true' || false),
+      OPENAI_API_KEY: userConfig.OPENAI_API_KEY || envConfig.OPENAI_API_KEY || '',
+      API_KEY: userConfig.API_KEY || envConfig.API_KEY || '',
+      MODEL: userConfig.MODEL || envConfig.MODEL || 'gpt-4'
+    };
   } catch (error) {
-    // Nếu file không tồn tại hoặc có lỗi, trả về cấu hình mặc định
+    // Nếu có lỗi, trả về cấu hình mặc định
     return {
       API_URL: 'http://localhost:3000/api/agent',
       SHELL_DIR: './src/shell',
-      DEBUG: false
+      DEBUG: false,
+      OPENAI_API_KEY: '',
+      API_KEY: '',
+      MODEL: 'gpt-4'
     };
   }
 }
@@ -1237,14 +1298,38 @@ async function configMode() {
         description: 'Chế độ debug (true/false)',
         default: false,
         validate: (value) => value === 'true' || value === 'false'
+      },
+      {
+        key: 'OPENAI_API_KEY',
+        description: 'OpenAI API Key',
+        default: '',
+        validate: (value) => true
+      },
+      {
+        key: 'API_KEY',
+        description: 'API Key',
+        default: '',
+        validate: (value) => true
+      },
+      {
+        key: 'MODEL',
+        description: 'Model AI (gpt-4, gpt-3.5-turbo, ...)',
+        default: 'gpt-4',
+        validate: (value) => true
       }
     ];
     
     for (const item of configItems) {
       const currentValue = currentConfig[item.key] !== undefined ? currentConfig[item.key] : item.default;
       
+      // Hiển thị giá trị ẩn cho API keys
+      let displayValue = currentValue;
+      if (item.key === 'OPENAI_API_KEY' || item.key === 'API_KEY') {
+        displayValue = currentValue ? `${currentValue.substring(0, 5)}...` : '';
+      }
+      
       const answer = await new Promise((resolve) => {
-        rl.question(`${item.description} [${currentValue}]: `, (input) => {
+        rl.question(`${item.description} [${displayValue}]: `, (input) => {
           resolve(input);
         });
       });
@@ -1271,6 +1356,9 @@ async function configMode() {
       if (item.key === 'API_URL') config.API_URL = currentConfig[item.key];
       if (item.key === 'SHELL_DIR') config.SHELL_DIR = currentConfig[item.key];
       if (item.key === 'DEBUG') config.DEBUG = currentConfig[item.key];
+      if (item.key === 'OPENAI_API_KEY') config.OPENAI_API_KEY = currentConfig[item.key];
+      if (item.key === 'API_KEY') config.API_KEY = currentConfig[item.key];
+      if (item.key === 'MODEL') config.MODEL = currentConfig[item.key];
     }
     
     // Lưu cấu hình
@@ -1303,6 +1391,9 @@ Các khóa cấu hình:
   API_URL            - URL của API server (mặc định: http://localhost:3000/api/agent)
   SHELL_DIR          - Thư mục chứa các script (mặc định: ./src/shell)
   DEBUG              - Chế độ debug (true/false)
+  OPENAI_API_KEY     - OpenAI API Key để gửi yêu cầu trực tiếp đến OpenAI
+  API_KEY            - API Key để xác thực với API server
+  MODEL              - Model AI sử dụng (gpt-4, gpt-3.5-turbo, ...)
         `);
         askQuestion();
         return;
@@ -1348,6 +1439,9 @@ Các khóa cấu hình:
           if (key === 'API_URL') config.API_URL = value;
           if (key === 'SHELL_DIR') config.SHELL_DIR = value;
           if (key === 'DEBUG') config.DEBUG = value.toLowerCase() === 'true';
+          if (key === 'OPENAI_API_KEY') config.OPENAI_API_KEY = value;
+          if (key === 'API_KEY') config.API_KEY = value;
+          if (key === 'MODEL') config.MODEL = value;
         }
         
         askQuestion();
@@ -1373,6 +1467,9 @@ async function main() {
   if (savedConfig.API_URL) config.API_URL = savedConfig.API_URL;
   if (savedConfig.SHELL_DIR) config.SHELL_DIR = savedConfig.SHELL_DIR;
   if (savedConfig.DEBUG !== undefined) config.DEBUG = savedConfig.DEBUG;
+  if (savedConfig.OPENAI_API_KEY) config.OPENAI_API_KEY = savedConfig.OPENAI_API_KEY;
+  if (savedConfig.API_KEY) config.API_KEY = savedConfig.API_KEY;
+  if (savedConfig.MODEL) config.MODEL = savedConfig.MODEL;
   
   // Cập nhật cấu hình từ tham số dòng lệnh
   if (args.debug) {

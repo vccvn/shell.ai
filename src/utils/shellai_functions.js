@@ -17,11 +17,27 @@ const execPromise = util.promisify(exec);
  */
 async function getSystemInfo() {
   try {
-    const osType = os.type();
-    const osVersion = os.release();
+    const rawOsType = os.type();
+    let osType = rawOsType;
+    let osVersion = os.release();
     const hostname = os.hostname();
     const user = os.userInfo().username;
     const arch = os.arch();
+    
+    // Xác định đúng tên hệ điều hành
+    if (rawOsType === 'Darwin') {
+      osType = 'macOS';
+      
+      // Lấy phiên bản macOS chi tiết hơn
+      try {
+        const { stdout } = await execPromise('sw_vers -productVersion');
+        if (stdout && stdout.trim()) {
+          osVersion = stdout.trim();
+        }
+      } catch (e) {
+        // Giữ nguyên osVersion nếu không lấy được từ sw_vers
+      }
+    }
     
     // Kiểm tra các package manager
     let packageManagers = '';
@@ -142,6 +158,25 @@ async function getSystemInfo() {
   }
 }
 
+// Tải cấu hình
+async function loadConfig() {
+  try {
+    const configPath = path.join(os.homedir(), '.shellai_config.json');
+    const configData = await fs.readFile(configPath, 'utf8');
+    return JSON.parse(configData);
+  } catch (error) {
+    // Nếu file không tồn tại hoặc có lỗi, trả về cấu hình mặc định
+    return {
+      API_URL: 'http://localhost:3000/api/agent',
+      SHELL_DIR: './src/shell',
+      DEBUG: false,
+      OPENAI_API_KEY: '',
+      API_KEY: '',
+      MODEL: 'gpt-4'
+    };
+  }
+}
+
 /**
  * Gửi yêu cầu đến API server
  * @param {string} endpoint - Endpoint API
@@ -157,10 +192,35 @@ async function sendApiRequest(endpoint, data, config) {
     
     const apiUrl = config && config.API_URL ? config.API_URL : 'http://localhost:3000/api/agent';
     
+    // Tải cấu hình để lấy API keys và model
+    const savedConfig = await loadConfig();
+    
+    // Tạo headers với API keys
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    // Thêm OpenAI API key nếu có
+    if (savedConfig.OPENAI_API_KEY) {
+      headers['openai_api_key'] = savedConfig.OPENAI_API_KEY;
+    }
+    
+    // Thêm API key nếu có
+    if (savedConfig.API_KEY) {
+      headers['api_key'] = savedConfig.API_KEY;
+    }
+    
+    // Thêm Model nếu có
+    if (savedConfig.MODEL) {
+      headers['model'] = savedConfig.MODEL;
+    }
+    
+    if (config && config.DEBUG) {
+      console.error(`[DEBUG] Headers:`, JSON.stringify(headers));
+    }
+    
     const response = await axios.post(`${apiUrl}/${endpoint}`, data, {
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: headers,
       timeout: 30000 // 30 giây timeout
     });
     

@@ -188,7 +188,8 @@ process_response() {
 chat_mode() {
   info_log "Bắt đầu chế độ chat. Nhập 'exit' để thoát."
   
-  history="[]"
+  # Khởi tạo lịch sử chat dưới dạng mảng JSON
+  history='[]'
   
   while true; do
     # Đọc input từ người dùng
@@ -199,14 +200,28 @@ chat_mode() {
       break
     fi
     
+    # Xử lý ký tự đặc biệt trong input của người dùng
+    user_input_escaped=$(echo "$user_input" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    
+    # Cập nhật lịch sử chat với tin nhắn của người dùng
+    history=$(echo "$history" | jq ". + [{\"role\": \"user\", \"content\": \"$user_input_escaped\"}]")
+    
     # Gửi yêu cầu đến API
     response=$(handle_chat "$user_input" "false" "$history")
     
     # Xử lý phản hồi
     process_response "$response"
     
-    # Cập nhật lịch sử chat
-    # Lưu ý: Cần cải thiện phần này để lưu lịch sử chat đúng định dạng JSON
+    # Trích xuất tin nhắn từ phản hồi
+    message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+    
+    # Xử lý ký tự đặc biệt trong tin nhắn của AI
+    message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    
+    # Cập nhật lịch sử chat với phản hồi của AI
+    if [ -n "$message" ]; then
+      history=$(echo "$history" | jq ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
+    fi
   done
   
   info_log "Đã kết thúc chế độ chat."
@@ -216,7 +231,8 @@ chat_mode() {
 dev_mode() {
   info_log "Bắt đầu chế độ phát triển. Nhập 'exit' để thoát hoặc 'help' để xem hướng dẫn."
   
-  history="[]"
+  # Khởi tạo lịch sử chat dưới dạng mảng JSON
+  history='[]'
   
   while true; do
     # Đọc input từ người dùng
@@ -243,10 +259,16 @@ Bạn có thể:
     
     # Xử lý lệnh clear
     if [[ "$user_input" == "clear" ]]; then
-      history="[]"
+      history='[]'
       info_log "Đã xóa lịch sử chat."
       continue
     fi
+    
+    # Xử lý ký tự đặc biệt trong input của người dùng
+    user_input_escaped=$(echo "$user_input" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    
+    # Cập nhật lịch sử chat với tin nhắn của người dùng
+    history=$(echo "$history" | jq ". + [{\"role\": \"user\", \"content\": \"$user_input_escaped\"}]")
     
     # Gửi yêu cầu đến API
     response=$(handle_chat "$user_input" "true" "$history")
@@ -254,8 +276,16 @@ Bạn có thể:
     # Xử lý phản hồi
     process_response "$response"
     
-    # Cập nhật lịch sử chat
-    # Lưu ý: Cần cải thiện phần này để lưu lịch sử chat đúng định dạng JSON
+    # Trích xuất tin nhắn từ phản hồi
+    message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+    
+    # Xử lý ký tự đặc biệt trong tin nhắn của AI
+    message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    
+    # Cập nhật lịch sử chat với phản hồi của AI
+    if [ -n "$message" ]; then
+      history=$(echo "$history" | jq ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
+    fi
   done
   
   info_log "Đã kết thúc chế độ phát triển."
@@ -272,11 +302,14 @@ config_mode() {
   echo "1. API URL: $API_URL"
   echo "2. Thư mục shell: $SHELL_DIR"
   echo "3. Debug: $DEBUG"
-  echo "4. Lưu thay đổi"
-  echo "5. Thoát"
+  echo "4. OpenAI API Key: ${OPENAI_API_KEY:0:5}..."
+  echo "5. API Key: ${API_KEY:0:5}..."
+  echo "6. Model: $MODEL"
+  echo "7. Lưu thay đổi"
+  echo "8. Thoát"
   
   while true; do
-    read -p "Chọn mục cần thay đổi (1-5): " choice
+    read -p "Chọn mục cần thay đổi (1-8): " choice
     
     case $choice in
       1)
@@ -298,15 +331,36 @@ config_mode() {
         fi
         ;;
       4)
-        save_config "$API_URL" "$SHELL_DIR" "$DEBUG"
+        read -p "Nhập OpenAI API Key mới [(hidden)]: " new_openai_api_key
+        if [ -n "$new_openai_api_key" ]; then
+          OPENAI_API_KEY="$new_openai_api_key"
+        fi
+        ;;
+      5)
+        read -p "Nhập API Key mới [(hidden)]: " new_api_key
+        if [ -n "$new_api_key" ]; then
+          API_KEY="$new_api_key"
+        fi
+        ;;
+      6)
+        read -p "Nhập Model mới [$MODEL]: " new_model
+        if [ -n "$new_model" ]; then
+          MODEL="$new_model"
+        fi
+        ;;
+      7)
+        save_config "$API_URL" "$SHELL_DIR" "$DEBUG" "$OPENAI_API_KEY" "$API_KEY" "$MODEL"
         echo "Cấu hình hiện tại:"
         echo "1. API URL: $API_URL"
         echo "2. Thư mục shell: $SHELL_DIR"
         echo "3. Debug: $DEBUG"
-        echo "4. Lưu thay đổi"
-        echo "5. Thoát"
+        echo "4. OpenAI API Key: ${OPENAI_API_KEY:0:5}..."
+        echo "5. API Key: ${API_KEY:0:5}..."
+        echo "6. Model: $MODEL"
+        echo "7. Lưu thay đổi"
+        echo "8. Thoát"
         ;;
-      5)
+      8)
         break
         ;;
       *)
@@ -390,6 +444,9 @@ main() {
   
   # Kiểm tra curl
   check_curl
+  
+  # Kiểm tra jq - cần thiết cho xử lý lịch sử chat
+  check_jq
   
   # Phân tích tham số
   parse_args "$@"

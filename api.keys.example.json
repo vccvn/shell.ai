@@ -1,0 +1,14 @@
+{
+    "keys": [
+      {
+        "key": "test-api-key-1",
+        "name": "Test User 1",
+        "role": "user"
+      },
+      {
+        "key": "test-api-key-2",
+        "name": "Test User 2",
+        "role": "admin"
+      }
+    ]
+  }

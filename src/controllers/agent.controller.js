@@ -22,19 +22,16 @@ async function processIssue(req, res) {
     
     // Thêm thông tin hệ thống vào prompt nếu có
     if (system_info) {
-      systemInfoPrompt = `
-      Thông tin hệ thống của người dùng:
-      - Hệ điều hành: ${system_info.os_type} ${system_info.os_version}
-      - Kiến trúc: ${system_info.arch}
-      - Người dùng: ${system_info.user}
-      - Hostname: ${system_info.hostname}
-      - Package managers: ${system_info.package_managers}
-      - Ngôn ngữ lập trình: ${system_info.languages}
-      - Web servers: ${system_info.web_servers}
-      - Databases: ${system_info.databases}
-      
-      Hãy tạo script phù hợp với hệ thống của người dùng. Sử dụng các công cụ và package managers có sẵn trên hệ thống.
-      `;
+      systemInfoPrompt = "Thông tin hệ thống của người dùng:\\n" +
+        "- Hệ điều hành: " + system_info.os_type + " " + system_info.os_version + "\\n" +
+        "- Kiến trúc: " + system_info.arch + "\\n" +
+        "- Người dùng: " + system_info.user + "\\n" +
+        "- Hostname: " + system_info.hostname + "\\n" +
+        "- Package managers: " + system_info.package_managers + "\\n" +
+        "- Ngôn ngữ lập trình: " + system_info.languages + "\\n" +
+        "- Web servers: " + system_info.web_servers + "\\n" +
+        "- Databases: " + system_info.databases + "\\n\\n" +
+        "Hãy tạo script phù hợp với hệ thống của người dùng. Sử dụng các công cụ và package managers có sẵn trên hệ thống.";
     }
     
     if (action === 'show') {
@@ -124,7 +121,7 @@ async function processIssue(req, res) {
         "script": {
           "filename": "${filename || 'file.txt'}",
           "content": "nội dung file đầy đủ, không bị cắt ngắn",
-          "type": "${suggest_type || (contentType === 'JavaScript' ? 'js' : contentType === 'Python' ? 'py' : contentType === 'shell script' ? 'sh' : 'txt')}",
+          "type": "${suggest_type || (contentType === 'JavaScript' ? 'js' : contentType === 'Python' ? 'py' : contentType === 'shell script' ? 'sh' : 'txt')} (có thể phụ thuộc yêu cầu cụ thể của người dùng)",
           "description": "mô tả ngắn về tác dụng của file"
         }
       }
@@ -273,17 +270,15 @@ async function fixScriptError(req, res) {
     // Tạo thông tin hệ thống nếu có
     let systemInfoPrompt = '';
     if (system_info) {
-      systemInfoPrompt = `
-      Thông tin hệ thống của người dùng:
-      - Hệ điều hành: ${system_info.os_type} ${system_info.os_version}
-      - Kiến trúc: ${system_info.arch}
-      - Người dùng: ${system_info.user}
-      - Hostname: ${system_info.hostname}
-      - Package managers: ${system_info.package_managers}
-      - Ngôn ngữ lập trình: ${system_info.languages}
-      - Web servers: ${system_info.web_servers}
-      - Databases: ${system_info.databases}
-      `;
+      systemInfoPrompt = "Thông tin hệ thống của người dùng:\\n" +
+        "- Hệ điều hành: " + system_info.os_type + " " + system_info.os_version + "\\n" +
+        "- Kiến trúc: " + system_info.arch + "\\n" +
+        "- Người dùng: " + system_info.user + "\\n" +
+        "- Hostname: " + system_info.hostname + "\\n" +
+        "- Package managers: " + system_info.package_managers + "\\n" +
+        "- Ngôn ngữ lập trình: " + system_info.languages + "\\n" +
+        "- Web servers: " + system_info.web_servers + "\\n" +
+        "- Databases: " + system_info.databases + "\\n";
     }
     
     // Tạo prompt cho OpenAI
@@ -399,17 +394,15 @@ async function handleChat(req, res) {
     // Tạo thông tin hệ thống nếu có
     let systemInfoPrompt = '';
     if (system_info) {
-      systemInfoPrompt = `
-      Thông tin hệ thống của người dùng:
-      - Hệ điều hành: ${system_info.os_type} ${system_info.os_version}
-      - Kiến trúc: ${system_info.arch}
-      - Người dùng: ${system_info.user}
-      - Hostname: ${system_info.hostname}
-      - Package managers: ${system_info.package_managers}
-      - Ngôn ngữ lập trình: ${system_info.languages}
-      - Web servers: ${system_info.web_servers}
-      - Databases: ${system_info.databases}
-      `;
+      systemInfoPrompt = "Thông tin hệ thống của người dùng:\\n" +
+        "- Hệ điều hành: " + system_info.os_type + " " + system_info.os_version + "\\n" +
+        "- Kiến trúc: " + system_info.arch + "\\n" +
+        "- Người dùng: " + system_info.user + "\\n" +
+        "- Hostname: " + system_info.hostname + "\\n" +
+        "- Package managers: " + system_info.package_managers + "\\n" +
+        "- Ngôn ngữ lập trình: " + system_info.languages + "\\n" +
+        "- Web servers: " + system_info.web_servers + "\\n" +
+        "- Databases: " + system_info.databases + "\\n";
     }
     
     // Xác định chế độ (chat thông thường hoặc dev)
@@ -440,16 +433,16 @@ async function handleChat(req, res) {
       ${message}
       
       ${systemInfoPrompt}
-      ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
+      ${suggest_type ? `Gợi ý loại file thực thi: ${suggest_type} (chú ý đây là kiểu file thực thi chứ không phải kiểu file người dùng yêu cầu)` : ''}
       
       Hãy phản hồi CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
       {
         "action": "Hành động cho biết phía client phải làm gì (chat, run, create)",
         "message": "Nội dung chat hoặc nội dung cần hiển thị với người dùng",
         "script": {
-            "filename": "tên_file.${suggest_type || 'js'}",
+            "filename": "tên_file.${suggest_type || 'js'} (chú ý đây là tên file có thể tuỳ vào yêu cầu cụ thể của người dùng nếu người dùng yêu cầu tạo file)",
             "content": "nội dung file đầy đủ, không bị cắt ngắn. trước khi thực thi, cần in ra màn hình lệnh đó để người dùng biết, thực thi gặp lỗi phải hiển thị lỗi",
-            "type": "${suggest_type || 'js'}",
+            "type": "${suggest_type || 'js'} (chú ý đây là tên file có thể tuỳ vào yêu cầu cụ thể của người dùng nếu người dùng yêu cầu tạo file)",
             "description": "mô tả ngắn về tác dụng của file",
             "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
         }

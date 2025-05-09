@@ -7,6 +7,9 @@ CONFIG_FILE="$HOME/.shellai_config.json"
 API_URL="http://localhost:3000/api/agent"
 SHELL_DIR="./src/shell"
 DEBUG=false
+OPENAI_API_KEY=""
+API_KEY=""
+MODEL="gpt-4"
 
 # Hàm debug log
 debug_log() {
@@ -64,13 +67,49 @@ check_curl() {
   fi
 }
 
+# Hàm kiểm tra cài đặt jq
+check_jq() {
+  if ! command -v jq &> /dev/null; then
+    warning_log "jq chưa được cài đặt. Đang cài đặt..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      # MacOS
+      brew install jq
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+      # Linux
+      if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y jq
+      elif command -v yum &> /dev/null; then
+        sudo yum install -y jq
+      else
+        error_log "Không thể cài đặt jq tự động. Vui lòng cài đặt thủ công."
+        exit 1
+      fi
+    else
+      error_log "Không thể cài đặt jq tự động trên hệ điều hành này. Vui lòng cài đặt thủ công."
+      exit 1
+    fi
+    success_log "Đã cài đặt jq thành công."
+  fi
+}
+
 # Hàm lấy thông tin hệ thống
 get_system_info() {
-  os_type=$(uname -s)
+  raw_os_type=$(uname -s)
   os_version=$(uname -r)
   hostname=$(hostname)
   user=$(whoami)
   arch=$(uname -m)
+  
+  # Xác định đúng tên hệ điều hành
+  if [[ "$raw_os_type" == "Darwin" ]]; then
+    os_type="macOS"
+    # Lấy phiên bản macOS chi tiết hơn
+    if command -v sw_vers &> /dev/null; then
+      os_version=$(sw_vers -productVersion)
+    fi
+  else
+    os_type="$raw_os_type"
+  fi
   
   # Kiểm tra các package manager
   package_managers=""
@@ -174,10 +213,23 @@ send_api_request() {
   
   debug_log "Gửi yêu cầu đến $API_URL/$endpoint với dữ liệu: $data"
   
-  response=$(curl -s -X POST "$API_URL/$endpoint" \
-    -H "Content-Type: application/json" \
-    -d "$data" \
-    --max-time 30)
+  # Tạo headers với API keys
+  local headers="-H \"Content-Type: application/json\""
+  
+  if [ -n "$OPENAI_API_KEY" ]; then
+    headers+=" -H \"openai_api_key: $OPENAI_API_KEY\""
+  fi
+  
+  if [ -n "$API_KEY" ]; then
+    headers+=" -H \"api_key: $API_KEY\""
+  fi
+  
+  if [ -n "$MODEL" ]; then
+    headers+=" -H \"model: $MODEL\""
+  fi
+  
+  # Thực hiện request với headers
+  response=$(eval "curl -s -X POST \"$API_URL/$endpoint\" $headers -d '$data' --max-time 30")
   
   debug_log "Nhận phản hồi: $response"
   
@@ -276,6 +328,8 @@ handle_chat() {
   
   request_data+="
   }"
+  
+  debug_log "Request data chat: $request_data"
   
   # Gửi request
   response=$(send_api_request "chat" "$request_data")
@@ -392,11 +446,21 @@ install_dependencies() {
 
 # Tải cấu hình
 load_config() {
+  # Đầu tiên, kiểm tra biến môi trường từ .env nếu có
+  if [ -f ".env" ]; then
+    debug_log "Tải cấu hình từ file .env"
+    source .env
+  fi
+  
+  # Sau đó, đọc từ file cấu hình người dùng, ghi đè lên các giá trị từ .env nếu có
   if [ -f "$CONFIG_FILE" ]; then
     # Đọc các giá trị từ file cấu hình
     config_api_url=$(grep -o '"api_url"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     config_shell_dir=$(grep -o '"shell_dir"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     config_debug=$(grep -o '"debug"[[:space:]]*:[[:space:]]*\(true\|false\)' "$CONFIG_FILE" | awk '{print $2}')
+    config_openai_api_key=$(grep -o '"openai_api_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    config_api_key=$(grep -o '"api_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    config_model=$(grep -o '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     
     # Cập nhật biến môi trường nếu có giá trị
     if [ -n "$config_api_url" ]; then
@@ -411,10 +475,25 @@ load_config() {
       DEBUG="$config_debug"
     fi
     
+    if [ -n "$config_openai_api_key" ]; then
+      OPENAI_API_KEY="$config_openai_api_key"
+    fi
+    
+    if [ -n "$config_api_key" ]; then
+      API_KEY="$config_api_key"
+    fi
+    
+    if [ -n "$config_model" ]; then
+      MODEL="$config_model"
+    fi
+    
     debug_log "Đã tải cấu hình từ $CONFIG_FILE"
     debug_log "API_URL=$API_URL"
     debug_log "SHELL_DIR=$SHELL_DIR"
     debug_log "DEBUG=$DEBUG"
+    debug_log "OPENAI_API_KEY=${OPENAI_API_KEY:0:5}..."
+    debug_log "API_KEY=${API_KEY:0:5}..."
+    debug_log "MODEL=$MODEL"
   else
     debug_log "Không tìm thấy file cấu hình $CONFIG_FILE, sử dụng giá trị mặc định"
   fi
@@ -428,6 +507,9 @@ save_config() {
   local api_url="$1"
   local shell_dir="$2"
   local debug="$3"
+  local openai_api_key="$4"
+  local api_key="$5"
+  local model="$6"
   
   # Sử dụng giá trị hiện tại nếu không có giá trị mới
   if [ -z "$api_url" ]; then
@@ -442,11 +524,26 @@ save_config() {
     debug="$DEBUG"
   fi
   
+  if [ -z "$openai_api_key" ]; then
+    openai_api_key="$OPENAI_API_KEY"
+  fi
+  
+  if [ -z "$api_key" ]; then
+    api_key="$API_KEY"
+  fi
+  
+  if [ -z "$model" ]; then
+    model="$MODEL"
+  fi
+  
   # Tạo JSON và lưu vào file
   echo "{
   \"api_url\": \"$api_url\",
   \"shell_dir\": \"$shell_dir\",
-  \"debug\": $debug
+  \"debug\": $debug,
+  \"openai_api_key\": \"$openai_api_key\",
+  \"api_key\": \"$api_key\",
+  \"model\": \"$model\"
 }" > "$CONFIG_FILE"
   
   success_log "Đã lưu cấu hình vào $CONFIG_FILE"
@@ -455,6 +552,9 @@ save_config() {
   API_URL="$api_url"
   SHELL_DIR="$shell_dir"
   DEBUG="$debug"
+  OPENAI_API_KEY="$openai_api_key"
+  API_KEY="$api_key"
+  MODEL="$model"
   
   # Đảm bảo thư mục shell tồn tại
   mkdir -p "$SHELL_DIR"
