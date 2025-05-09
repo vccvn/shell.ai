@@ -1,104 +1,524 @@
 #!/bin/bash
 
 # shellai.sh - Script chính để tương tác với Shell.AI
-# Script này giờ đây sẽ gọi shellai.js để thực hiện các tác vụ
 
-# Đường dẫn đến file JavaScript
-JS_FILE="$(dirname "$0")/shellai.js"
+# Tải các hàm từ shellai_functions.sh
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source "$SCRIPT_DIR/shellai_functions.sh"
 
-# Kiểm tra file JavaScript tồn tại
-if [ ! -f "$JS_FILE" ]; then
-    echo -e "\033[0;31m[LỖI]\033[0m File shellai.js không tồn tại"
-    exit 1
-fi
+# Hàm hiển thị hướng dẫn sử dụng
+show_usage() {
+  echo "Cách sử dụng: $(basename "$0") [lệnh] [tham số] [-m \"mô tả\"] [--debug]
+  
+Các lệnh:
+  install <pkg1> <pkg2> ...    Cài đặt các gói phần mềm
+  check <service>              Kiểm tra trạng thái dịch vụ
+  create file <tên file>       Tạo file mới
+  chat                         Bắt đầu chế độ chat với AI
+  dev                          Bắt đầu chế độ phát triển hệ thống
+  config                       Xem và thay đổi cấu hình
+  help                         Hiển thị hướng dẫn sử dụng
 
-# Hàm hiển thị thông báo lỗi
-error_log() {
-    echo -e "\033[0;31m[LỖI]\033[0m $1" >&2
+Các tùy chọn:
+  -m, --message \"nội dung\"    Mô tả chi tiết yêu cầu
+  --debug                      Hiển thị thông tin debug
+  -h, --help                   Hiển thị hướng dẫn sử dụng
+
+Ví dụ:
+  $(basename "$0") install apache2 nginx -m \"Cài đặt web server\"
+  $(basename "$0") check mysql
+  $(basename "$0") create file index.html -m \"Tạo trang web đơn giản\"
+  $(basename "$0") chat
+  $(basename "$0") dev
+  $(basename "$0") config
+  $(basename "$0") -m \"Kiểm tra và hiển thị thông tin hệ thống\""
 }
 
-# Hàm hiển thị thông báo thành công
-success_log() {
-    echo -e "\033[0;32m[THÀNH CÔNG]\033[0m $1" >&2
-}
-
-# Hàm hiển thị thông báo thông tin
-info_log() {
-    echo -e "\033[0;34m[THÔNG TIN]\033[0m $1" >&2
-}
-
-# Kiểm tra và cài đặt Node.js nếu cần
-check_nodejs() {
-    if ! command -v node &> /dev/null; then
-        error_log "Node.js chưa được cài đặt. Bạn cần cài đặt Node.js để chạy Shell.AI."
-        
-        # Xác định hệ điều hành
-        os_type="unknown"
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            if command -v apt-get &> /dev/null; then
-                os_type="debian"
-            elif command -v yum &> /dev/null; then
-                os_type="redhat"
-            elif command -v pacman &> /dev/null; then
-                os_type="arch"
-            fi
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            os_type="mac"
-        fi
-        
-        # Hiển thị hướng dẫn cài đặt dựa trên hệ điều hành
-        case "$os_type" in
-            "debian")
-                install_cmd="curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - && sudo apt-get install -y nodejs"
-                ;;
-            "redhat")
-                install_cmd="curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash - && sudo yum install -y nodejs"
-                ;;
-            "arch")
-                install_cmd="sudo pacman -S nodejs npm"
-                ;;
-            "mac")
-                install_cmd="brew install node"
-                ;;
-            *)
-                error_log "Không thể xác định cách cài đặt Node.js tự động cho hệ điều hành của bạn."
-                error_log "Vui lòng truy cập https://nodejs.org để cài đặt thủ công."
-                exit 1
-                ;;
-        esac
-        
-        # Hỏi người dùng có muốn cài đặt tự động không
-        read -p "Bạn có muốn cài đặt Node.js tự động không? (y/n): " answer
-        
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            info_log "Đang cài đặt Node.js..."
-            echo "Lệnh sẽ được thực thi: $install_cmd"
-            
-            # Thực thi lệnh cài đặt
-            eval "$install_cmd"
-            
-            # Kiểm tra lại sau khi cài đặt
-            if command -v node &> /dev/null; then
-                node_version=$(node -v)
-                success_log "Đã cài đặt Node.js thành công (phiên bản $node_version)."
-            else
-                error_log "Cài đặt Node.js thất bại. Vui lòng cài đặt thủ công từ https://nodejs.org"
-                exit 1
-            fi
+# Xử lý tham số dòng lệnh
+parse_args() {
+  COMMAND=""
+  PARAMS=()
+  MESSAGE=""
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -m|--message)
+        MESSAGE="$2"
+        shift 2
+        ;;
+      --debug)
+        DEBUG=true
+        shift
+        ;;
+      -h|--help)
+        show_usage
+        exit 0
+        ;;
+      *)
+        if [ -z "$COMMAND" ]; then
+          COMMAND="$1"
         else
-            error_log "Bạn đã từ chối cài đặt Node.js. Vui lòng cài đặt thủ công từ https://nodejs.org"
-            exit 1
+          PARAMS+=("$1")
         fi
-    fi
+        shift
+        ;;
+    esac
+  done
 }
 
-# Kiểm tra Node.js
-check_nodejs
+# Hàm xử lý phản hồi từ API
+process_response() {
+  local response="$1"
+  
+  # Kiểm tra phản hồi có dạng JSON hay không
+  if ! echo "$response" | grep -q '^{.*}$'; then
+    error_log "Phản hồi không hợp lệ từ API"
+    debug_log "Phản hồi nhận được: $response"
+    return 1
+  fi
+  
+  # Kiểm tra xem có lỗi không
+  if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
+    error_message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+    if [ -n "$error_message" ]; then
+      error_log "Lỗi API: $error_message"
+    else
+      error_log "Lỗi không xác định từ API"
+    fi
+    debug_log "Phản hồi đầy đủ: $response"
+    return 1
+  fi
+  
+  # Trích xuất action, message và script từ phản hồi
+  action=$(echo "$response" | grep -o '"action"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+  message=$(echo "$response" | grep -o '"message"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+  
+  # Hiển thị thông báo nếu có
+  if [ -n "$message" ]; then
+    info_log "$message"
+  fi
+  
+  # Kiểm tra action có tồn tại không
+  if [ -z "$action" ]; then
+    error_log "Phản hồi không có action"
+    debug_log "Phản hồi đầy đủ: $response"
+    return 1
+  fi
+  
+  # Xử lý dựa trên action
+  case "$action" in
+    "run")
+      # Trích xuất thông tin script
+      filename=$(echo "$response" | grep -o '"filename"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      content=$(echo "$response" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      type=$(echo "$response" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      description=$(echo "$response" | grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      prepare=$(echo "$response" | grep -o '"prepare"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      
+      # Kiểm tra install dependencies trước
+      if [ -n "$prepare" ]; then
+        install_dependencies "$prepare"
+      fi
+      
+      # Tạo file script
+      script_path="$SHELL_DIR/$filename"
+      create_file "$script_path" "$content" "$type"
+      
+      # Hỏi người dùng có muốn thực thi không
+      read -p "Bạn có muốn tạo file này không? (y/n): " answer
+      
+      if [[ "$answer" == "y" ]]; then
+        # Thực thi script
+        execute_file "$script_path" "$type" "" "$description"
+        
+        # Kiểm tra lỗi và hỏi có sửa không
+        exit_status=$?
+        if [ $exit_status -ne 0 ]; then
+          read -p "File $script_path có lỗi. Bạn có muốn gửi thông tin lỗi đến AI để sửa không? (y/n): " fix_answer
+          
+          if [[ "$fix_answer" == "y" ]]; then
+            script_content=$(cat "$script_path")
+            error_message="Exit code: $exit_status"
+            
+            # Gửi yêu cầu sửa lỗi
+            fix_response=$(fix_script_error "$MESSAGE" "$error_message" "$script_content")
+            process_response "$fix_response"
+          fi
+        fi
+        
+        # Hỏi có muốn xóa file hay không
+        read -p "Bạn có muốn giữ lại file $script_path? (y/n): " keep_answer
+        if [[ "$keep_answer" != "y" ]]; then
+          rm "$script_path"
+          success_log "Đã xóa file $script_path"
+        fi
+      fi
+      ;;
+      
+    "create")
+      # Trích xuất thông tin script
+      filename=$(echo "$response" | grep -o '"filename"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      content=$(echo "$response" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      type=$(echo "$response" | grep -o '"type"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      description=$(echo "$response" | grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+      
+      # Tạo file
+      file_path="$filename"
+      
+      # Hỏi người dùng có muốn tạo file không
+      info_log "Script này tạo file $filename với nội dung là $description"
+      read -p "Bạn có muốn tạo file này không? (y/n): " answer
+      
+      if [[ "$answer" == "y" ]]; then
+        create_file "$file_path" "$content" "$type"
+      fi
+      ;;
+      
+    "show"|"chat")
+      # Trường hợp này đã hiển thị message ở trên
+      ;;
+      
+    *)
+      error_log "Action không hợp lệ: $action"
+      ;;
+  esac
+}
 
-# Đảm bảo file JavaScript có quyền thực thi
-chmod +x "$JS_FILE"
+# Chế độ chat
+chat_mode() {
+  info_log "Bắt đầu chế độ chat. Nhập 'exit' để thoát."
+  
+  history="[]"
+  
+  while true; do
+    # Đọc input từ người dùng
+    read -p "Bạn: " user_input
+    
+    # Kiểm tra nếu người dùng muốn thoát
+    if [[ "$user_input" == "exit" ]]; then
+      break
+    fi
+    
+    # Gửi yêu cầu đến API
+    response=$(handle_chat "$user_input" "false" "$history")
+    
+    # Xử lý phản hồi
+    process_response "$response"
+    
+    # Cập nhật lịch sử chat
+    # Lưu ý: Cần cải thiện phần này để lưu lịch sử chat đúng định dạng JSON
+  done
+  
+  info_log "Đã kết thúc chế độ chat."
+}
 
-# Chuyển tiếp tất cả tham số cho file JavaScript
-node "$JS_FILE" "$@"
+# Chế độ phát triển
+dev_mode() {
+  info_log "Bắt đầu chế độ phát triển. Nhập 'exit' để thoát hoặc 'help' để xem hướng dẫn."
+  
+  history="[]"
+  
+  while true; do
+    # Đọc input từ người dùng
+    read -p "dev> " user_input
+    
+    # Kiểm tra nếu người dùng muốn thoát
+    if [[ "$user_input" == "exit" ]]; then
+      break
+    fi
+    
+    # Kiểm tra nếu người dùng cần trợ giúp
+    if [[ "$user_input" == "help" ]]; then
+      echo "Các lệnh có sẵn trong chế độ phát triển:
+  exit          - Thoát khỏi chế độ dev
+  help          - Hiển thị trợ giúp này
+  clear         - Xóa lịch sử chat
+  
+Bạn có thể:
+- Đặt câu hỏi với AI
+- Yêu cầu AI tạo script để thực hiện tác vụ
+- Yêu cầu AI sửa lỗi trong code của bạn"
+      continue
+    fi
+    
+    # Xử lý lệnh clear
+    if [[ "$user_input" == "clear" ]]; then
+      history="[]"
+      info_log "Đã xóa lịch sử chat."
+      continue
+    fi
+    
+    # Gửi yêu cầu đến API
+    response=$(handle_chat "$user_input" "true" "$history")
+    
+    # Xử lý phản hồi
+    process_response "$response"
+    
+    # Cập nhật lịch sử chat
+    # Lưu ý: Cần cải thiện phần này để lưu lịch sử chat đúng định dạng JSON
+  done
+  
+  info_log "Đã kết thúc chế độ phát triển."
+}
 
-exit $? 
+# Chế độ cài đặt
+config_mode() {
+  info_log "Cấu hình Shell.AI"
+  
+  # Đọc cấu hình hiện tại
+  load_config
+  
+  echo "Cấu hình hiện tại:"
+  echo "1. API URL: $API_URL"
+  echo "2. Thư mục shell: $SHELL_DIR"
+  echo "3. Debug: $DEBUG"
+  echo "4. Lưu thay đổi"
+  echo "5. Thoát"
+  
+  while true; do
+    read -p "Chọn mục cần thay đổi (1-5): " choice
+    
+    case $choice in
+      1)
+        read -p "Nhập API URL mới [$API_URL]: " new_api_url
+        if [ -n "$new_api_url" ]; then
+          API_URL="$new_api_url"
+        fi
+        ;;
+      2)
+        read -p "Nhập thư mục shell mới [$SHELL_DIR]: " new_shell_dir
+        if [ -n "$new_shell_dir" ]; then
+          SHELL_DIR="$new_shell_dir"
+        fi
+        ;;
+      3)
+        read -p "Debug mode (true/false) [$DEBUG]: " new_debug
+        if [ -n "$new_debug" ]; then
+          DEBUG="$new_debug"
+        fi
+        ;;
+      4)
+        save_config "$API_URL" "$SHELL_DIR" "$DEBUG"
+        echo "Cấu hình hiện tại:"
+        echo "1. API URL: $API_URL"
+        echo "2. Thư mục shell: $SHELL_DIR"
+        echo "3. Debug: $DEBUG"
+        echo "4. Lưu thay đổi"
+        echo "5. Thoát"
+        ;;
+      5)
+        break
+        ;;
+      *)
+        error_log "Lựa chọn không hợp lệ"
+        ;;
+    esac
+  done
+}
+
+# Hàm tạo script đơn giản khi không kết nối được đến API
+create_simple_script() {
+  local command="$1"
+  local filename="simple_script_$(date +%Y%m%d%H%M%S).sh"
+  local script_path="$SHELL_DIR/$filename"
+  
+  # Tạo script đơn giản
+  local script_content="#!/bin/bash\n\n"
+  script_content+="# Script tạo tự động cho lệnh: $command\n\n"
+  script_content+="# Hiển thị thông báo\n"
+  script_content+="echo \"Thực thi lệnh: $command\"\n\n"
+  
+  # Chuyển đổi các thành phần của lệnh thành lệnh thực thi
+  IFS=' ' read -ra CMD_PARTS <<< "$command"
+  
+  if [ ${#CMD_PARTS[@]} -gt 0 ]; then
+    script_content+="# Thực thi lệnh\n"
+    script_content+="echo \"Lệnh thực thi:\"\n"
+    script_content+="echo \"${CMD_PARTS[*]}\"\n\n"
+    script_content+="# Đây là nơi thực thi lệnh thực tế\n"
+    script_content+="# Bỏ comment dòng dưới đây nếu bạn muốn thực thi lệnh\n"
+    script_content+="# ${CMD_PARTS[*]}\n"
+  fi
+  
+  # Tạo file script
+  mkdir -p "$(dirname "$script_path")"
+  echo -e "$script_content" > "$script_path"
+  chmod +x "$script_path"
+  
+  # Trả về đường dẫn đầy đủ của script
+  echo "$script_path"
+}
+
+# Hàm xử lý lệnh tùy biến trong chế độ offline
+process_offline_command() {
+  local command="$1"
+  local type="$2"
+  
+  # Tạo script đơn giản
+  local script_path=$(create_simple_script "$command")
+  
+  # Lấy tên file từ đường dẫn
+  local filename=$(basename "$script_path")
+  
+  # Hiển thị thông tin
+  info_log "Đã tạo script đơn giản: $script_path"
+  info_log "Lưu ý: Đây là script đơn giản được tạo tự động khi không kết nối được đến API."
+  
+  # Hiển thị thông tin mô tả
+  local description="Script đơn giản cho lệnh: $command"
+  
+  # Hỏi người dùng có muốn thực thi không
+  read -p "Bạn có muốn thực thi file này không? (y/n): " answer
+  
+  if [[ "$answer" == "y" ]]; then
+    # Thực thi script
+    execute_file "$script_path" "sh" "" "$description"
+    
+    # Hỏi có muốn xóa file hay không
+    read -p "Bạn có muốn giữ lại file $script_path? (y/n): " keep_answer
+    if [[ "$keep_answer" != "y" ]]; then
+      rm "$script_path"
+      success_log "Đã xóa file $script_path"
+    fi
+  fi
+}
+
+# Hàm main
+main() {
+  # Tải cấu hình
+  load_config
+  
+  # Kiểm tra curl
+  check_curl
+  
+  # Phân tích tham số
+  parse_args "$@"
+  
+  # Nếu không có lệnh, hiển thị hướng dẫn và thoát
+  if [ -z "$COMMAND" ] && [ -z "$MESSAGE" ]; then
+    dev_mode
+    exit 0
+  fi
+  
+  # Xử lý lệnh
+  case "$COMMAND" in
+    "install")
+      if [ ${#PARAMS[@]} -eq 0 ]; then
+        error_log "Thiếu tên gói cần cài đặt"
+        show_usage
+        exit 1
+      fi
+      
+      # Tạo nội dung yêu cầu
+      if [ -z "$MESSAGE" ]; then
+        MESSAGE="Cài đặt các gói phần mềm: ${PARAMS[*]}"
+      fi
+      
+      # Gửi yêu cầu với action = run
+      response=$(process_request "$MESSAGE" "run" "install" "")
+      if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
+        # Nếu có lỗi, chuyển sang chế độ offline
+        warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
+        process_offline_command "$COMMAND ${PARAMS[*]}" "install"
+      else
+        process_response "$response"
+      fi
+      ;;
+      
+    "check")
+      if [ ${#PARAMS[@]} -eq 0 ]; then
+        error_log "Thiếu tên dịch vụ cần kiểm tra"
+        show_usage
+        exit 1
+      fi
+      
+      # Tạo nội dung yêu cầu
+      if [ -z "$MESSAGE" ]; then
+        MESSAGE="Kiểm tra trạng thái dịch vụ: ${PARAMS[*]}"
+      fi
+      
+      # Gửi yêu cầu với action = run
+      response=$(process_request "$MESSAGE" "run" "check" "")
+      if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
+        # Nếu có lỗi, chuyển sang chế độ offline
+        warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
+        process_offline_command "$COMMAND ${PARAMS[*]}" "check"
+      else
+        process_response "$response"
+      fi
+      ;;
+      
+    "create")
+      if [ ${#PARAMS[@]} -lt 2 ]; then
+        error_log "Thiếu thông tin file cần tạo"
+        show_usage
+        exit 1
+      fi
+      
+      type=${PARAMS[0]}
+      filename=${PARAMS[1]}
+      
+      # Tạo nội dung yêu cầu
+      if [ -z "$MESSAGE" ]; then
+        MESSAGE="Tạo file $filename"
+      fi
+      
+      # Gửi yêu cầu với action = create
+      response=$(process_request "$MESSAGE" "create" "$type" "$filename")
+      if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
+        # Nếu có lỗi, chuyển sang chế độ offline
+        warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
+        process_offline_command "$COMMAND $type $filename" "create"
+      else
+        process_response "$response"
+      fi
+      ;;
+      
+    "chat")
+      chat_mode
+      ;;
+      
+    "dev")
+      dev_mode
+      ;;
+      
+    "config")
+      config_mode
+      ;;
+      
+    "help")
+      show_usage
+      ;;
+      
+    *)
+      if [ -n "$MESSAGE" ]; then
+        # Nếu có message, sử dụng message làm yêu cầu
+        custom_request="$COMMAND ${PARAMS[*]}: $MESSAGE"
+        info_log "Thực hiện lệnh tùy biến: $custom_request"
+        response=$(process_request "$custom_request" "run" "" "")
+        if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
+          # Nếu có lỗi, chuyển sang chế độ offline
+          warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
+          process_offline_command "$custom_request" "custom"
+        else
+          process_response "$response"
+        fi
+      else
+        # Không có message, tự tạo yêu cầu từ lệnh và tham số
+        custom_request="$COMMAND ${PARAMS[*]}"
+        info_log "Thực hiện lệnh tùy biến: $custom_request"
+        response=$(process_request "$custom_request" "run" "" "")
+        if echo "$response" | grep -q '"success"[[:space:]]*:[[:space:]]*false'; then
+          # Nếu có lỗi, chuyển sang chế độ offline
+          warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
+          process_offline_command "$custom_request" "custom"
+        else
+          process_response "$response"
+        fi
+      fi
+      ;;
+  esac
+}
+
+# Thực thi main với tất cả tham số
+main "$@"

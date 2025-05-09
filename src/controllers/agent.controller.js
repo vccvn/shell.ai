@@ -7,7 +7,7 @@ const openaiService = require('../services/openai.service');
  */
 async function processIssue(req, res) {
   try {
-    const { issue, action = 'run', type, target, filename, system_info } = req.body;
+    const { issue, action = 'run', type, target, filename, system_info, suggest_type } = req.body;
     
     if (!issue) {
       return res.status(400).json({ 
@@ -115,6 +115,7 @@ async function processIssue(req, res) {
       
       ${filePrompt}
       ${target ? `Đích: ${target}` : ''}
+      ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
       
       Hãy phản hồi CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
       {
@@ -123,7 +124,7 @@ async function processIssue(req, res) {
         "script": {
           "filename": "${filename || 'file.txt'}",
           "content": "nội dung file đầy đủ, không bị cắt ngắn",
-          "type": "${contentType === 'JavaScript' ? 'js' : contentType === 'Python' ? 'py' : contentType === 'shell script' ? 'sh' : 'txt'}",
+          "type": "${suggest_type || (contentType === 'JavaScript' ? 'js' : contentType === 'Python' ? 'py' : contentType === 'shell script' ? 'sh' : 'txt')}",
           "description": "mô tả ngắn về tác dụng của file"
         }
       }
@@ -164,9 +165,10 @@ async function processIssue(req, res) {
       
       ${type ? `Loại: ${type}` : ''}
       ${target ? `Đích: ${target}` : ''}
+      ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
       
       Lưu ý: 
-      1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
+      1. ${suggest_type ? `Ưu tiên tạo file ${suggest_type}` : 'Ưu tiên tạo file JavaScript (Node.js)'} để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
       2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
       3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('Executing: ls -la')
       4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'
@@ -179,9 +181,9 @@ async function processIssue(req, res) {
         "action": "run",
         "message": "Giải thích ngắn gọn về script",
         "script": {
-          "filename": "tên_file.js",
+          "filename": "tên_file.${suggest_type || 'js'}",
           "content": "nội dung file đầy đủ, không bị cắt ngắn. trước khi thực thi, cần in ra màn hình lệnh đó để người dùng biết",
-          "type": "js",
+          "type": "${suggest_type || 'js'}",
           "description": "mô tả ngắn về tác dụng của file",
           "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
         }
@@ -259,7 +261,7 @@ async function processIssue(req, res) {
  */
 async function fixScriptError(req, res) {
   try {
-    const { issue, error, script, system_info } = req.body;
+    const { issue, error, script, system_info, suggest_type } = req.body;
     
     if (!error || !script) {
       return res.status(400).json({ 
@@ -298,15 +300,16 @@ async function fixScriptError(req, res) {
     \`\`\`
     
     ${systemInfoPrompt}
+    ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
     
     Hãy phân tích lỗi, sửa script và trả về CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
     {
       "action": "run",
       "message": "Giải thích về lỗi và cách bạn đã sửa nó",
       "script": {
-        "filename": "tên_file.js",
+        "filename": "tên_file.${suggest_type || 'js'}",
         "content": "nội dung file đã sửa đầy đủ, không bị cắt ngắn",
-        "type": "js",
+        "type": "${suggest_type || 'js'}",
         "description": "mô tả ngắn về tác dụng của file",
         "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
       }
@@ -384,7 +387,7 @@ async function fixScriptError(req, res) {
  */
 async function handleChat(req, res) {
   try {
-    const { message, system_info, mode, history = [] } = req.body;
+    const { message, system_info, mode, history = [], suggest_type } = req.body;
     
     if (!message) {
       return res.status(400).json({ 
@@ -437,15 +440,16 @@ async function handleChat(req, res) {
       ${message}
       
       ${systemInfoPrompt}
+      ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
       
       Hãy phản hồi CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
       {
         "action": "Hành động cho biết phía client phải làm gì (chat, run, create)",
         "message": "Nội dung chat hoặc nội dung cần hiển thị với người dùng",
         "script": {
-            "filename": "tên_file.js",
+            "filename": "tên_file.${suggest_type || 'js'}",
             "content": "nội dung file đầy đủ, không bị cắt ngắn. trước khi thực thi, cần in ra màn hình lệnh đó để người dùng biết, thực thi gặp lỗi phải hiển thị lỗi",
-            "type": "js",
+            "type": "${suggest_type || 'js'}",
             "description": "mô tả ngắn về tác dụng của file",
             "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
         }
@@ -454,7 +458,7 @@ async function handleChat(req, res) {
       Nếu không cần tạo script, chỉ cần trả về action là "chat" và message là nội dung phản hồi, không cần trường script.
       Nếu cần tạo script để thực thi, hãy đặt action là "run", message là giải thích, và script là thông tin file cần tạo.
           Lưu ý: 
-          1. Ưu tiên tạo file JavaScript (Node.js) để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
+          1. ${suggest_type ? `Ưu tiên tạo file ${suggest_type}` : 'Ưu tiên tạo file JavaScript (Node.js)'} để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
           2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
           3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('Executing: ls -la')
           4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'

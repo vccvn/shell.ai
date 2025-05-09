@@ -6,4 +6,4 @@ yarn-error.log
 src/shell/*
 !src/shell/.gitkeep 
 package-lock.json
-requirements.txt
+requirement.txt
