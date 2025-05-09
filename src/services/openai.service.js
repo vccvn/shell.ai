@@ -49,6 +49,34 @@ async function getCompletion(prompt) {
 
     let content = response.choices[0].message.content;
     
+    // Xử lý các ký tự escape trong phản hồi nếu có
+    if (content.includes('\\n') || content.includes('\\t') || content.includes('\\r')) {
+      console.log('Phát hiện ký tự escape trong phản hồi OpenAI, đang xử lý...');
+      // Thực hiện thay thế một cách an toàn, không làm ảnh hưởng đến cấu trúc JSON
+      try {
+        // Phân tích chuỗi JSON (nếu có)
+        if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+          const jsonObj = JSON.parse(content);
+          
+          // Nếu có trường content trong script, xử lý
+          if (jsonObj.script && jsonObj.script.content) {
+            // Xử lý nội dung script để thay thế ký tự escape
+            jsonObj.script.content = jsonObj.script.content
+              .replace(/\\n/g, '\n')
+              .replace(/\\t/g, '\t')
+              .replace(/\\r/g, '\r')
+              .replace(/\\\\/g, '\\');
+            
+            // Chuyển đổi lại thành chuỗi JSON
+            content = JSON.stringify(jsonObj);
+          }
+        }
+      } catch (jsonError) {
+        console.warn('Không thể xử lý ký tự escape qua JSON:', jsonError.message);
+        // Vẫn giữ nguyên nội dung, sẽ được xử lý ở file.service.js
+      }
+    }
+
     // Nếu phản hồi có thể là JSON nhưng sử dụng backticks, thử chuyển đổi
     if ((prompt.includes('dạng JSON') || prompt.includes('định dạng JSON')) && content.includes('`')) {
       try {

@@ -7,6 +7,27 @@ const config = require('../config');
 const execPromise = util.promisify(exec);
 
 /**
+ * Xử lý các ký tự escape trong nội dung script
+ * @param {string} content - Nội dung cần xử lý
+ * @returns {string} - Nội dung đã xử lý
+ */
+function processScriptContent(content) {
+  if (!content) return '';
+  
+  // Thay thế các chuỗi \n thành ký tự xuống dòng thực tế
+  let processedContent = content.replace(/\\n/g, '\n');
+  
+  // Thay thế các chuỗi \t thành ký tự tab thực tế
+  processedContent = processedContent.replace(/\\t/g, '\t');
+  
+  // Xử lý các ký tự escape khác nếu cần
+  processedContent = processedContent.replace(/\\r/g, '\r');
+  processedContent = processedContent.replace(/\\\\/g, '\\');
+  
+  return processedContent;
+}
+
+/**
  * Tạo file từ thông tin và nội dung
  * @param {object} fileInfo - Thông tin file cần tạo
  * @returns {Promise<string>} - Đường dẫn đến file đã tạo
@@ -19,8 +40,11 @@ async function createFile(fileInfo) {
     // Đảm bảo thư mục tồn tại
     await fs.ensureDir(path.dirname(filePath));
     
+    // Xử lý nội dung trước khi lưu
+    const processedContent = processScriptContent(content);
+    
     // Ghi nội dung vào file
-    await fs.writeFile(filePath, content);
+    await fs.writeFile(filePath, processedContent);
     
     // Nếu là shell script, đặt quyền thực thi
     if (type === 'sh') {
