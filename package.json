@@ -2,10 +2,17 @@
   "name": "shell.ai",
   "version": "1.0.0",
   "description": "AI agent để tự động hóa việc tạo và thực thi script",
-  "main": "src/server.js",
+  "main": "src/bridge/electron-main.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "web": "node src/server.js",
+    "dev-agent": "node src/bridge/desktop-agent.js",
+    "electron": "npx electron .",
+    "build": "electron-builder",
+    "build-mac": "electron-builder --mac --publish never",
+    "build-win": "electron-builder --win --publish never",
+    "build-linux": "electron-builder --linux",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:start:prod": "pm2 start ecosystem.config.js --env production",
     "pm2:stop": "pm2 stop shell-ai-api",
@@ -29,11 +36,82 @@
     "express": "^4.18.2",
     "fs": "^0.0.1-security",
     "fs-extra": "^11.1.1",
+    "node-fetch": "^2.7.0",
     "openai": "^4.12.1",
-    "os": "^0.1.2"
+    "os": "^0.1.2",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "nodemon": "^3.1.0",
     "pm2": "^5.3.0"
+  },
+  "build": {
+    "appId": "com.shellai.app",
+    "productName": "Shell.AI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "shellai.js",
+      "shellai.sh",
+      "shellai_functions.sh",
+      "package.json",
+      "node_modules/**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*/{.travis.yml,.github,.git}"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": "extra",
+        "filter": ["api.keys.example.json"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Development"
+    }
   }
 }

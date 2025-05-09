@@ -1,0 +1,60 @@
+# CLIENT APP (DESKTOP) - SHELL.AI
+
+## Mô tả:
+Client App là ứng dụng desktop đa nền tảng cho Shell.AI, được xây dựng bằng Electron, cho phép người dùng tương tác với các tính năng của Shell.AI thông qua giao diện đồ họa. Ứng dụng cung cấp trải nghiệm người dùng trực quan, hỗ trợ tạo, lưu, chỉnh sửa và thực thi scripts được tạo bởi AI. Ứng dụng có thể hoạt động độc lập hoặc kết nối với API Server để xử lý các yêu cầu phức tạp.
+
+## Cấu trúc thư mục:
+```
+src/
+├── bridge/
+│   ├── electron-main.js      # Entry point chính của ứng dụng Electron
+│   ├── preload.js            # Script preload cho Electron
+│   └── desktop-agent.js      # Xử lý tương tác giữa UI và hệ thống
+├── public/
+│   ├── index.html            # File HTML chính
+│   ├── styles/
+│   │   └── main.css          # Stylesheet chính
+│   ├── scripts/
+│   │   ├── app.js            # JavaScript chính cho UI
+│   │   └── api.js            # Kết nối API
+│   ├── components/
+│   │   ├── Terminal.js       # Component terminal ảo
+│   │   ├── Editor.js         # Component chỉnh sửa script
+│   │   ├── ConfigPanel.js    # Giao diện cấu hình
+│   │   └── ScriptList.js     # Danh sách scripts đã lưu
+│   └── icons/
+│       └── icon.svg          # Biểu tượng ứng dụng
+└── config/
+    └── index.js              # Cấu hình ứng dụng desktop
+```
+
+## Danh sách thư viện:
+1. **Electron (^29.1.0)**: Framework để xây dựng ứng dụng desktop
+2. **Electron-builder (^24.13.3)**: Công cụ đóng gói ứng dụng Electron
+3. **Node-fetch (^2.7.0)**: Thực hiện HTTP requests
+4. **FS-Extra (^11.1.1)**: Thao tác với hệ thống file
+5. **Monaco Editor**: Editor code tích hợp (tương tự VS Code)
+6. **Xterm.js**: Terminal ảo trong browser
+7. **Chart.js**: Hiển thị biểu đồ và dữ liệu
+8. **Marked**: Chuyển đổi Markdown thành HTML
+
+## Tính năng chính:
+1. **Giao diện trực quan**: UI thân thiện với người dùng
+2. **Terminal tích hợp**: Hiển thị và thực thi lệnh trực tiếp
+3. **Editor có syntax highlighting**: Chỉnh sửa scripts với hỗ trợ nhiều ngôn ngữ
+4. **Quản lý cấu hình**: Giao diện cấu hình API keys và tùy chọn
+5. **Kết nối API Server hoặc OpenAI trực tiếp**: Linh hoạt trong việc xử lý yêu cầu
+6. **Lưu và quản lý scripts**: Lưu trữ và tổ chức scripts đã tạo
+7. **Chế độ offline**: Có thể sử dụng các scripts đã lưu mà không cần kết nối
+
+## Quy trình đóng gói:
+1. **Electron-builder**: Đóng gói ứng dụng thành installer
+2. **Hỗ trợ đa nền tảng**: macOS (.dmg, .zip), Windows (.exe, .msi), Linux (.AppImage, .deb, .rpm)
+3. **Auto-updates**: Tích hợp cơ chế cập nhật tự động
+4. **Code signing**: Ký số ứng dụng cho macOS và Windows
+
+## Cài đặt và chạy:
+1. **Phát triển**: `npm run electron`
+2. **Build cho macOS**: `npm run build-mac`
+3. **Build cho Windows**: `npm run build-win`
+4. **Build cho Linux**: `npm run build-linux` 

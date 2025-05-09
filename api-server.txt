@@ -1,0 +1,56 @@
+# API SERVER - SHELL.AI
+
+## Mô tả:
+API Server là thành phần xử lý các yêu cầu từ giao diện người dùng (web hoặc desktop) và cung cấp các dịch vụ AI cho ứng dụng Shell.AI. Server được xây dựng trên nền tảng Node.js với Express, xử lý các yêu cầu tạo và thực thi script, phân tích thông tin hệ thống, và tương tác với OpenAI API.
+
+## Cấu trúc thư mục:
+```
+./ 
+├── api.keys.json           # Lưu trữ API keys (production)
+├── api.keys.example.json   # Mẫu file cấu hình API keys
+└── src/
+    ├── server.js                 # Entry point của API server
+    ├── config/
+    │   └── index.js              # Cấu hình cho server
+    ├── routes/
+    │   └── agent.routes.js       # Định nghĩa các routes API
+    ├── controllers/
+    │   └── agent.controller.js   # Logic xử lý các routes
+    ├── services/
+    │   └── ai.service.js         # Dịch vụ tương tác với OpenAI
+    ├── models/
+    │   └── script.model.js       # Mô hình dữ liệu cho scripts
+    ├── middleware/
+    │   ├── auth.middleware.js    # Xác thực API keys
+    │   └── logger.middleware.js  # Ghi log các yêu cầu
+    ├── utils/
+    │   ├── system.util.js        # Tiện ích thông tin hệ thống
+    │   └── script.util.js        # Tiện ích xử lý scripts
+    └── shell/                    # Thư mục lưu scripts tạm thời
+```
+
+## Danh sách thư viện:
+1. **Express (^4.18.2)**: Framework web cho Node.js
+2. **Cors (^2.8.5)**: Middleware cho phép CORS
+3. **Dotenv (^16.3.1)**: Quản lý biến môi trường
+4. **FS-Extra (^11.1.1)**: Thao tác với hệ thống file
+5. **OpenAI (^4.12.1)**: SDK để tương tác với OpenAI API
+6. **Axios (^1.6.0)**: HTTP client
+7. **WS (^8.16.0)**: WebSocket cho kết nối thời gian thực
+8. **OS (^0.1.2)**: Lấy thông tin hệ điều hành
+9. **PM2 (^5.3.0)**: Quản lý quy trình cho production
+
+## Các Endpoints API chính:
+1. **POST /api/agent/dev**: Tạo script dựa trên mô tả
+2. **POST /api/agent/execute**: Thực thi script đã tạo
+3. **GET /api/agent/info**: Lấy thông tin hệ thống
+4. **POST /api/agent/config**: Cập nhật cấu hình
+
+## Quy trình hoạt động:
+1. Nhận yêu cầu từ client (web/desktop)
+2. Xác thực yêu cầu nếu cần
+3. Gửi yêu cầu đến OpenAI API
+4. Tạo script dựa trên phản hồi của AI
+5. Lưu script vào thư mục shell
+6. Thực thi script nếu được yêu cầu
+7. Trả về kết quả cho client 

@@ -1,273 +1,169 @@
 # Shell.AI
 
-Shell.AI là một AI agent chuyên phát triển hệ thống, tự động hóa việc tạo và thực thi script dựa trên yêu cầu của người dùng.
+Shell.AI là trợ lý AI tự động hóa việc tạo và thực thi script. Ứng dụng cho phép tương tác bằng ngôn ngữ tự nhiên để tạo, chỉnh sửa và thực thi các script shell, giúp đơn giản hóa các tác vụ phức tạp trên hệ thống.
 
 <div align="center">
   <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="version">
   <img src="https://img.shields.io/badge/license-ISC-green.svg" alt="license">
 </div>
 
-## Tính năng
+## Tính năng chính
 
-- 🤖 Tự động tạo script dựa trên yêu cầu của người dùng
-- 🚀 Tự động thực thi script và hiển thị kết quả
-- 🔧 Tự động phát hiện lỗi và đề xuất sửa lỗi
-- 📄 Hỗ trợ nhiều loại script (bash, JavaScript, Python, ...)
-- 🌐 Hỗ trợ tách biệt Shell client và API server
-- 🧹 Tự động dọn dẹp file sau khi hoàn thành
-- 📝 Giao diện dòng lệnh đơn giản, dễ sử dụng
-- 🔄 Hỗ trợ nhiều cú pháp đơn giản và linh hoạt
-- 💬 Chế độ dev với lưu trữ lịch sử trò chuyện
-- 🔌 Kiểm tra và cài đặt thư viện tự động
+- Tự động tạo và thực thi script shell từ mô tả bằng ngôn ngữ tự nhiên
+- Hỗ trợ đa nền tảng: Windows, macOS, Linux
+- Chế độ Dev, Chat và Script
+- Tự động nhận diện thông tin hệ thống để tạo script phù hợp
+- Giao diện web và CLI
+- Khả năng chạy offline với API key
+- Lưu trữ và quản lý các script đã tạo
 
-## Cài đặt
+## Cài đặt và chạy
 
-### Yêu cầu hệ thống
+### Phương pháp 1: Sử dụng mã nguồn (yêu cầu Node.js)
 
-#### API Server
-- Node.js >= 14.x
-- npm >= 6.x
+#### Yêu cầu
+- Node.js (v14 trở lên)
+- npm hoặc yarn
 
-#### Shell Client
-- Node.js >= 14.x
-- npm >= 6.x
+#### Các bước cài đặt
+1. Clone repository
+   ```bash
+   git clone https://github.com/username/shell.ai.git
+   cd shell.ai
+   ```
 
-### Cài đặt API Server
+2. Cài đặt dependencies
+   ```bash
+   npm install
+   ```
 
-1. Clone repository:
+3. Cấu hình .env (tùy chọn)
+   ```bash
+   cp .env.example .env
+   # Chỉnh sửa file .env thêm API keys của bạn
+   ```
 
-```bash
-git clone https://github.com/username/shell.ai.git
-cd shell.ai
-```
+4. Chạy server API
+   ```bash
+   npm run start
+   ```
 
-2. Cài đặt các phụ thuộc:
+5. Chạy Shell.AI CLI
+   - Trên macOS/Linux:
+     ```bash
+     ./shellai.sh
+     ```
+   - Trên Windows:
+     ```bash
+     node shellai.js
+     ```
 
-```bash
-npm install
-```
+### Phương pháp 2: Sử dụng ứng dụng desktop đã đóng gói (không yêu cầu Node.js)
 
-3. Tạo file .env và cập nhật thông tin:
+1. Tải file cài đặt từ trang [Releases](https://github.com/username/shell.ai/releases)
+2. Cài đặt ứng dụng:
+   - Windows: Chạy file .exe hoặc .msi
+   - macOS: Mở file .dmg và kéo ứng dụng vào thư mục Applications
+   - Linux: Cài đặt file .deb, .rpm hoặc chạy file AppImage
 
-```bash
-echo 'PORT=3000' > .env
-echo 'OPENAI_API_KEY=your_openai_api_key_here' >> .env
-echo 'MODEL=gpt-4' >> .env
-echo 'SHELL_DIR=./src/shell' >> .env
-```
+3. Mở ứng dụng Shell.AI từ menu Start hoặc Applications
 
-4. Khởi động server:
+### Phương pháp 3: Chạy giao diện web
 
-```bash
-# Sử dụng Node.js
-npm start
+1. Chạy server API
+   ```bash
+   npm run start
+   ```
 
-# Hoặc sử dụng nodemon cho phát triển
-npm run dev
-```
+2. Truy cập giao diện web tại địa chỉ: http://localhost:3000
 
-### Chạy với PM2 (Đề xuất cho môi trường sản xuất)
+### Phương pháp 4: Chạy desktop agent và kết nối với giao diện web
 
-PM2 là một process manager cho ứng dụng Node.js, giúp đảm bảo ứng dụng luôn hoạt động, tự động khởi động lại khi gặp lỗi, và nhiều tính năng hữu ích khác.
+1. Chạy desktop agent
+   ```bash
+   npm run dev-agent
+   ```
 
-1. Cài đặt PM2 (đã được bao gồm trong `devDependencies`):
-
-```bash
-# Cài đặt toàn cục nếu cần
-npm install -g pm2
-```
-
-2. Khởi động ứng dụng với PM2:
-
-```bash
-# Khởi động trong môi trường phát triển
-npm run pm2:start
-
-# Khởi động trong môi trường sản xuất
-npm run pm2:start:prod
-```
-
-### Cài đặt Shell Client (JavaScript)
-
-1. Cài đặt Node.js và npm nếu chưa có:
-
-```bash
-# Trên Ubuntu/Debian
-sudo apt update
-sudo apt install nodejs npm
-
-# Trên macOS với Homebrew
-brew install node
-```
-
-2. Sử dụng một trong hai cách sau để chạy Shell.AI:
-
-#### Cách 1: Sử dụng shellai.sh (Khuyến nghị cho Linux/macOS)
-
-```bash
-chmod +x shellai.sh
-./shellai.sh config
-```
-
-#### Cách 2: Sử dụng Node.js trực tiếp
-
-```bash
-node shellai.js config
-```
-
-3. Tạo lệnh ngắn gọn (tùy chọn):
-
-```bash
-# Nếu sử dụng shellai.sh
-ln -sf shellai.sh ai
-chmod +x ai
-
-# Nếu sử dụng Node.js trực tiếp
-echo '#!/bin/bash\nnode "$(dirname "$0")/shellai.js" "$@"' > ai
-chmod +x ai
-```
+2. Mở trình duyệt và truy cập http://localhost:3000
 
 ## Sử dụng
 
-### Cú pháp cơ bản
+### Chế độ CLI
+
+- **Chế độ script**: Tạo script từ mô tả
+  ```bash
+  ./shellai.sh "Tạo script kiểm tra dung lượng ổ đĩa"
+  ```
+
+- **Chế độ dev**: Đối thoại tương tác để giải quyết vấn đề
+  ```bash
+  ./shellai.sh dev
+  ```
+
+- **Chế độ chat**: Trò chuyện với Shell.AI
+  ```bash
+  ./shellai.sh chat
+  ```
+
+- **Chế độ cấu hình**: Cấu hình Shell.AI
+  ```bash
+  ./shellai.sh config
+  ```
+
+### Chế độ Web/Desktop
+
+1. Mở giao diện web hoặc ứng dụng desktop
+2. Nhập yêu cầu vào ô nhập liệu
+3. Nhấn "Gửi" hoặc Enter để gửi yêu cầu
+4. Xem kết quả và thực thi script nếu cần
+
+## Cách hoạt động giữa Web và Hệ thống
+
+Shell.AI có nhiều phương pháp để can thiệp vào hệ thống từ giao diện web:
+
+1. **Desktop Agent**: Một ứng dụng Node.js chạy cục bộ và kết nối với giao diện web qua WebSocket. Agent này có quyền thực thi lệnh hệ thống.
+
+2. **Electron App**: Đóng gói giao diện web và desktop agent thành một ứng dụng desktop đầy đủ quyền.
+
+3. **Browser Download**: Trong trường hợp không có desktop agent, giao diện web tạo script và hướng dẫn người dùng tải về để thực thi thủ công.
+
+## Đóng gói ứng dụng desktop
+
+Để đóng gói ứng dụng desktop cho các nền tảng khác nhau:
 
 ```bash
-# Sử dụng shellai.sh
-./shellai.sh [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
+# Đóng gói cho tất cả nền tảng
+npm run build
 
-# Hoặc sử dụng Node.js trực tiếp
-node shellai.js [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
+# Đóng gói cho Windows
+npm run build-win
 
-# Hoặc sử dụng lệnh ngắn gọn
-./ai [lệnh] [tham số...] [-m "nội dung yêu cầu"] [--debug]
+# Đóng gói cho macOS
+npm run build-mac
+
+# Đóng gói cho Linux
+npm run build-linux
 ```
 
-### Các lệnh hỗ trợ
+## Cấu hình
 
-```bash
-# Cài đặt các công cụ
-./shellai.sh install nginx php mysql
-# hoặc
-node shellai.js install nginx php mysql
-
-# Cài đặt với yêu cầu cụ thể
-./shellai.sh install -m "Cài đặt LAMP stack với PHP 8.1"
-
-# Kiểm tra dịch vụ
-./shellai.sh check mysql -m "Kiểm tra trạng thái MySQL"
-
-# Tạo file mới
-./shellai.sh create file index.html -m "Tạo trang web đơn giản"
-
-# Chế độ chat
-./shellai.sh chat
-# hoặc
-node shellai.js chat
-
-# Chế độ phát triển (dev)
-./shellai.sh dev
-# hoặc
-node shellai.js dev
-
-# Cấu hình Shell.AI
-./shellai.sh config
-# hoặc
-node shellai.js config
-
-# Hiển thị trợ giúp
-./shellai.sh help
-```
-
-### Các tùy chọn
-
-| Tùy chọn | Mô tả |
-|----------|-------|
-| `-m`, `--message` | Chỉ định nội dung yêu cầu cụ thể |
-| `--debug` | Hiển thị thông tin debug |
-| `-h`, `--help` | Hiển thị trợ giúp |
-
-## Chế độ phát triển (Dev Mode)
-
-Chế độ phát triển là một tính năng mới trong phiên bản JavaScript của Shell.AI. Chế độ này cho phép:
-
-- Chat với AI và lưu trữ lịch sử trò chuyện
-- Thực thi script khi cần thiết
-- Tạo file mới dựa trên yêu cầu
-- Kiểm tra và cài đặt thư viện tự động nếu cần
-
-Để sử dụng chế độ phát triển:
-
-```bash
-./shellai.sh dev
-# hoặc
-node shellai.js dev
-```
-
-Trong chế độ dev, bạn có thể:
-- Nhập "help" để xem hướng dẫn sử dụng
-- Nhập "exit" để thoát chế độ dev
-
-## Cấu hình Shell.AI Client
-
-Shell.AI client lưu trữ cấu hình tại `$HOME/.shellai_config.json`. Bạn có thể chỉnh sửa file này trực tiếp hoặc sử dụng lệnh cấu hình để thiết lập:
+Bạn có thể cấu hình Shell.AI qua file .env hoặc chế độ cấu hình:
 
 ```bash
 ./shellai.sh config
-# hoặc
-node shellai.js config
 ```
 
-## Định dạng phản hồi JSON mới
+Các tham số cấu hình:
+- `API_URL`: URL của API server
+- `SHELL_DIR`: Thư mục lưu trữ các script
+- `DEBUG`: Chế độ debug (true/false)
+- `OPENAI_API_KEY`: OpenAI API Key
+- `API_KEY`: API Key để xác thực với API server
+- `MODEL`: Model AI sử dụng (gpt-4, gpt-3.5-turbo, etc.)
 
-Phiên bản JavaScript của Shell.AI sử dụng định dạng phản hồi JSON mới với cấu trúc:
+## Đóng góp
 
-```json
-{
-  "action": "run|create|show",
-  "message": "Thông điệp từ AI",
-  "script": {
-    "filename": "tên_file.js",
-    "content": "nội dung script",
-    "type": "js|sh|py|php",
-    "description": "mô tả script",
-    "prepare": "lệnh cài đặt thư viện nếu cần"
-  }
-}
-```
-
-## Cách hoạt động
-
-1. Người dùng gửi yêu cầu thông qua lệnh shell (shellai.js hoặc ai)
-2. Shell.AI client gửi yêu cầu đến server API
-3. Server API gửi prompt đến ChatGPT để tạo script
-4. ChatGPT trả về thông tin về các file cần tạo
-5. Server API phân tích phản hồi và trả về thông tin về các file
-6. Shell.AI client tạo các file script cục bộ từ thông tin nhận được
-7. Shell.AI client thực thi các file theo thứ tự
-8. Nếu gặp lỗi, Shell.AI sẽ hỏi người dùng có muốn sửa lỗi không
-9. Nếu đồng ý, Shell.AI sẽ gửi yêu cầu sửa lỗi đến server API
-10. Quá trình lặp lại cho đến khi vấn đề được giải quyết
-11. Sau khi hoàn thành, file sẽ tự động được dọn dẹp
-
-## Cấu trúc dự án
-
-```
-shell.ai/
-├── src/
-│   ├── config/         # Cấu hình ứng dụng
-│   ├── controllers/    # Xử lý logic nghiệp vụ
-│   ├── models/         # Mô hình dữ liệu
-│   ├── routes/         # Định nghĩa các route API
-│   ├── services/       # Các dịch vụ
-│   ├── shell/          # Thư mục chứa các script được tạo
-│   └── utils/          # Tiện ích
-│       ├── shellai_functions.js  # Các hàm tiện ích cho JavaScript
-│       └── chatHistory.js        # Quản lý lịch sử trò chuyện
-├── shellai.js          # Script JavaScript chính
-├── ai                  # Symlink ngắn gọn đến shellai.js
-├── .env                # Biến môi trường
-└── package.json        # Cấu hình npm
-```
+Đóng góp và báo lỗi luôn được chào đón! Vui lòng tạo issue hoặc pull request trên GitHub.
 
 ## Giấy phép
 

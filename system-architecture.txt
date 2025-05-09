@@ -1,0 +1,61 @@
+# KIẾN TRÚC HỆ THỐNG - SHELL.AI
+
+## Tổng quan
+Shell.AI là một hệ thống AI để tự động hóa việc tạo và thực thi script dựa trên mô tả bằng ngôn ngữ tự nhiên. Hệ thống bao gồm ba thành phần chính: API Server, Client Command Line, và Client App (Desktop). Các thành phần này có thể hoạt động độc lập hoặc kết hợp với nhau để cung cấp trải nghiệm toàn diện cho người dùng.
+
+## Sơ đồ kiến trúc
+```
+┌────────────────┐      ┌────────────────┐      ┌────────────────┐
+│                │      │                │      │                │
+│  Client App    │◄────►│   API Server   │◄────►│   OpenAI API   │
+│  (Desktop)     │      │                │      │                │
+│                │      │                │      │                │
+└────────────────┘      └───────┬────────┘      └────────────────┘
+                                │
+                                │
+                        ┌───────▼────────┐
+                        │                │
+                        │     Client     │
+                        │  Command Line  │
+                        │                │
+                        └────────────────┘
+```
+
+## Luồng dữ liệu
+1. Người dùng tương tác với Shell.AI thông qua Client App hoặc Client Command Line
+2. Yêu cầu được gửi đến API Server (hoặc trực tiếp đến OpenAI API trong trường hợp Client Command Line)
+3. API Server xử lý yêu cầu, tương tác với OpenAI API để tạo script
+4. Script được trả về Client App hoặc Client Command Line
+5. Người dùng có thể thực thi, chỉnh sửa, hoặc lưu script
+
+## Phương thức kết nối
+- **API Server <-> Client App**: REST API, WebSocket
+- **API Server <-> Client Command Line**: REST API
+- **API Server <-> OpenAI API**: HTTP Requests
+- **Client Command Line <-> OpenAI API**: HTTP Requests (trực tiếp trong một số trường hợp)
+
+## Lưu trữ dữ liệu
+1. **Scripts**: Lưu trữ tại thư mục `shell/` (API Server) hoặc thư mục người dùng (Client App/Command Line)
+2. **Cấu hình**: 
+   - API Server: File `.env` và `api.keys.json` cho API keys
+   - Client App: Thư mục `~/.shellai/` và `config.json`
+   - Client Command Line: File `.env` cho biến môi trường
+3. **Lịch sử**: Lưu trữ trong file JSON hoặc cache của ứng dụng
+
+## Bảo mật
+1. **API Keys**: Lưu trữ an toàn và mã hóa
+2. **Xác thực**: JWT hoặc API key cho các yêu cầu API
+3. **Phân quyền**: Kiểm soát quyền truy cập đến tài nguyên hệ thống
+4. **Mã hóa**: HTTPS cho tất cả kết nối qua mạng
+
+## Khả năng mở rộng
+1. **Microservices**: Có thể tách API Server thành các dịch vụ nhỏ hơn
+2. **Plugins**: Hỗ trợ mở rộng thông qua hệ thống plugin
+3. **API mở**: Cho phép tích hợp với các ứng dụng khác
+4. **Đa ngôn ngữ**: Hỗ trợ nhiều ngôn ngữ lập trình và shell khác nhau
+
+## Yêu cầu hệ thống
+1. **API Server**: Node.js v14+, 512MB RAM, 1GB dung lượng ổ cứng
+2. **Client App**: Windows 10+/macOS 10.14+/Linux với glibc 2.17+, 2GB RAM
+3. **Client Command Line**: Bash v4+ (Linux/macOS) hoặc Node.js v12+ (Windows)
+4. **Kết nối Internet**: Cần thiết để tương tác với OpenAI API 

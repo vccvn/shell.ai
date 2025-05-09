@@ -8,3 +8,5 @@ src/shell/*
 package-lock.json
 requirement.txt
 api.keys.json
+/dist
+/builddist/

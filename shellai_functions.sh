@@ -211,7 +211,6 @@ send_api_request() {
   local endpoint="$1"
   local data="$2"
   
-  debug_log "Gửi yêu cầu đến $API_URL/$endpoint với dữ liệu: $data"
   
   # Tạo headers với API keys
   local headers="-H \"Content-Type: application/json\""
@@ -227,6 +226,10 @@ send_api_request() {
   if [ -n "$MODEL" ]; then
     headers+=" -H \"model: $MODEL\""
   fi
+  debug_log "Gửi yêu cầu đến API server"
+  debug_log "POST $API_URL/$endpoint"
+  debug_log "Headers: $headers"
+  debug_log "Body: $data"
   
   # Thực hiện request với headers
   response=$(eval "curl -s -X POST \"$API_URL/$endpoint\" $headers -d '$data' --max-time 30")

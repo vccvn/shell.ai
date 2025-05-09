@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shell.AI - Web Interface</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Shell.AI</h1>
+            <p>Trợ lý AI tự động hóa tác vụ hệ thống</p>
+        </header>
+        
+        <div class="chat-container">
+            <div id="chat-messages" class="chat-messages"></div>
+            
+            <div class="input-container">
+                <textarea id="user-input" placeholder="Nhập yêu cầu hoặc câu hỏi của bạn..."></textarea>
+                <button id="send-button">Gửi</button>
+            </div>
+        </div>
+        
+        <div class="system-info">
+            <h3>Thông tin hệ thống</h3>
+            <div id="system-info-content">Đang tải...</div>
+        </div>
+        
+        <div id="script-container" class="script-container hidden">
+            <h3>Script được tạo</h3>
+            <div class="script-info">
+                <p id="script-description"></p>
+                <pre id="script-content"></pre>
+            </div>
+            <div class="script-actions">
+                <button id="run-script">Thực thi</button>
+                <button id="save-script">Lưu</button>
+                <button id="cancel-script">Hủy</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html> 

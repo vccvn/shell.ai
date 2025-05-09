@@ -165,11 +165,21 @@ async function processIssue(req, res) {
       ${suggest_type ? `Gợi ý loại file: ${suggest_type}` : ''}
       
       Lưu ý: 
-      1. ${suggest_type ? `Ưu tiên tạo file ${suggest_type}` : 'Ưu tiên tạo file JavaScript (Node.js)'} để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
+      1. ${suggest_type ? `Ưu tiên tạo file ${suggest_type}` : 'Ưu tiên tạo file JavaScript (Node.js)'} để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó trên các hệ diều hành hỗ trợ.
       2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
-      3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('Executing: ls -la')
+      3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, 
+        ví dụ: muốn thực thi : exec(command) 
+          thì console.log(command) trước sau đó mới thực thi exec(command)
+        ví dụ: muốn thực thi : exec('ls -la')
+        thì console.log('Executing: ls -la') trước sau đó mới thực thi exec('ls -la')
+
       4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'
+        ví dụ: muốn thực thi : ls -la
+        thì echo 'Executing: ls -la' trước sau đó mới thực thi ls -la
       5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('Executing: ls -la')
+        ví dụ: muốn thực thi : subprocess.run(["ls", "-la"],...)
+        thì print('Executing: ls -la') trước sau đó mới thực thi subprocess.run(["ls", "-la"],...)
+      5.5 tương tự với các ngôn ngữ khác, ví dụ: PHP, Ruby, ...
       6. Đảm bảo xử lý lỗi đầy đủ trong script, hiển thị thông báo lỗi phù hợp.
       7. QUAN TRỌNG: Trả về JSON hợp lệ, không sử dụng backticks trong phản hồi JSON.
       
@@ -453,9 +463,18 @@ async function handleChat(req, res) {
           Lưu ý: 
           1. ${suggest_type ? `Ưu tiên tạo file ${suggest_type}` : 'Ưu tiên tạo file JavaScript (Node.js)'} để thực thi các tác vụ shell. Chỉ sử dụng shell script (.sh) khi thực sự cần thiết hoặc các tác vụ liên quan đến cài đặt hoặc gỡ phần mềm hay thư viện nào đó.
           2. Trong mỗi script, trước khi thực thi bất kỳ lệnh shell nào, cần in ra màn hình lệnh đó để người dùng biết.
-          3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, ví dụ: console.log('Executing: ls -la')
+          3. Đối với JavaScript, sử dụng console.log để hiển thị lệnh trước khi thực thi, 
+            ví dụ: muốn thực thi : exec(command) 
+              thì console.log(command) trước sau đó mới thực thi exec(command)
+            ví dụ: muốn thực thi : exec('ls -la')
+            thì console.log('Executing: ls -la') trước sau đó mới thực thi exec('ls -la')
           4. Đối với shell script, sử dụng echo để hiển thị lệnh trước khi thực thi, ví dụ: echo 'Executing: ls -la'
+            ví dụ: muốn thực thi : ls -la
+            thì echo 'Executing: ls -la' trước sau đó mới thực thi ls -la
           5. Đối với Python, sử dụng print để hiển thị lệnh trước khi thực thi, ví dụ: print('Executing: ls -la')
+            ví dụ: muốn thực thi : subprocess.run(["ls", "-la"],...)
+            thì print('Executing: ls -la') trước sau đó mới thực thi subprocess.run(["ls", "-la"],...)
+          5.5 tương tự với các ngôn ngữ khác, ví dụ: PHP, Ruby, ...
           6. Đảm bảo xử lý lỗi đầy đủ trong script, hiển thị thông báo lỗi phù hợp.
           
       Nếu cần tạo file nhưng không thực thi, hãy đặt action là "create".

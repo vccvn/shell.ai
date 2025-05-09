@@ -1,0 +1,44 @@
+# CLIENT COMMAND LINE - SHELL.AI
+
+## Mô tả:
+Client Command Line là công cụ dòng lệnh để tương tác với Shell.AI trực tiếp từ terminal. Công cụ này cung cấp khả năng tạo, thực thi và quản lý scripts thông qua các lệnh đơn giản. Được viết bằng bash script (shellai.sh) cho Linux/macOS và JavaScript (shellai.js) cho Windows, công cụ này là cách nhanh nhất để tận dụng sức mạnh của AI để tự động hóa các tác vụ của hệ thống.
+
+## Cấu trúc thư mục:
+```
+./
+├── shellai.sh                # Script bash chính (Linux/macOS)
+├── shellai.js                # Script JavaScript chính (Windows)
+├── shellai_functions.sh      # Các hàm hỗ trợ cho shellai.sh
+├── ai                        # Symbolic link đến shellai.sh (tiện lợi)
+└── .env.example              # Mẫu file cấu hình môi trường
+```
+
+## Danh sách thư viện (cho shellai.js):
+1. **fs**: Node.js module xử lý file
+2. **path**: Node.js module xử lý đường dẫn
+3. **child_process**: Thực thi lệnh hệ thống
+4. **os**: Lấy thông tin hệ điều hành
+5. **readline**: Tương tác với người dùng qua dòng lệnh
+
+## Các lệnh hỗ trợ:
+1. **./shellai.sh**: Tạo script từ mô tả (mặc định)
+2. **./shellai.sh dev "mô tả..."**: Tạo script từ mô tả cung cấp
+3. **./shellai.sh run**: Chạy script vừa tạo
+4. **./shellai.sh save [tên-file]**: Lưu script vừa tạo
+5. **./shellai.sh config**: Cấu hình API keys và tùy chọn
+6. **./shellai.sh info**: Hiển thị thông tin hệ thống
+7. **./shellai.sh help**: Hiển thị trợ giúp
+
+## Quy trình hoạt động:
+1. Người dùng chạy lệnh với yêu cầu (ví dụ: "./shellai.sh dev 'tạo script kiểm tra dung lượng ổ cứng'")
+2. Script thu thập thông tin hệ thống (OS, phiên bản, shell...)
+3. Gửi yêu cầu đến Shell.AI API server (hoặc trực tiếp đến OpenAI API)
+4. Nhận kết quả và hiển thị script được tạo
+5. Tùy chọn thực thi hoặc lưu script
+
+## Tính năng đặc biệt:
+1. **Chế độ tương tác**: Cho phép tương tác với AI để tinh chỉnh scripts
+2. **Cache kết quả**: Lưu lại các scripts đã tạo để sử dụng lại
+3. **Lịch sử lệnh**: Lưu trữ và truy xuất các scripts đã tạo trước đó
+4. **Tích hợp shell**: Có thể thực thi scripts trực tiếp từ dòng lệnh
+5. **Hỗ trợ nhiều ngôn ngữ lập trình**: Có thể tạo scripts trong nhiều ngôn ngữ khác nhau ngoài Bash 
