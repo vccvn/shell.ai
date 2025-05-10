@@ -66,6 +66,90 @@ parse_args() {
   done
 }
 
+# Hàm xử lý tự động nhiều bước
+auto_solve() {
+  local response="$1"
+  local original_question="$2"
+  local is_first_script="$3"
+
+  # Kiểm tra phản hồi có dạng JSON không
+  if ! (echo "$response" | jq '.' > /dev/null 2>&1); then
+    error_log "Phản hồi không hợp lệ từ API"
+    debug_log "Phản hồi nhận được: $response"
+    return 1
+  fi
+
+  # Trích xuất action, message, script
+  local action message filename content type description prepare
+  action=$(echo "$response" | jq -r '.action // ""')
+  message=$(echo "$response" | jq -r '.message // ""')
+
+  if [ -n "$message" ]; then
+    info_log "$message"
+  fi
+
+  if [[ "$action" == "done" || "$action" == "chat" || "$action" == "show" ]]; then
+    return 0
+  fi
+
+  if [[ "$action" == "run" ]]; then
+    filename=$(echo "$response" | jq -r '.script.filename // ""')
+    content=$(echo "$response" | jq -r '.script.content // ""')
+    type=$(echo "$response" | jq -r '.script.type // ""')
+    description=$(echo "$response" | jq -r '.script.description // ""')
+    prepare=$(echo "$response" | jq -r '.script.prepare // ""')
+    script_path="$SHELL_DIR/$filename"
+    local should_execute=1
+    if [ "$is_first_script" = "1" ]; then
+      read -p "Bạn có muốn thực thi script $filename không? (y/n): " answer
+      if [[ "$answer" != "y" ]]; then
+        info_log "Bạn đã từ chối thực thi script. Dừng lại."
+        return 0
+      fi
+    fi
+    # Cài đặt dependencies nếu có
+    if [ -n "$prepare" ]; then
+      install_dependencies "$prepare"
+    fi
+    # Tạo file
+    create_file "$script_path" "$content" "$type"
+    # Thực thi file và lấy output
+    local output
+    if [[ "$type" == "sh" || "$type" == "bash" ]]; then
+      output=$(bash "$script_path" 2>&1)
+    elif [[ "$type" == "js" || "$type" == "javascript" ]]; then
+      output=$(node "$script_path" 2>&1)
+    elif [[ "$type" == "py" || "$type" == "python" ]]; then
+      output=$(python3 "$script_path" 2>&1)
+    else
+      output=$("$script_path" 2>&1)
+    fi
+    # Hỏi giữ file như cũ
+    read -p "Bạn có muốn giữ lại file $script_path không? (y/n): " keep_answer
+    if [[ "$keep_answer" != "y" ]]; then
+      rm "$script_path"
+      success_log "Đã xóa file $script_path"
+    fi
+    # Gửi lại output cho AI với action analyze
+    local output_json
+    output_json=$(printf "%s" "$output" | jq -Rs .)
+    # Escape kỹ hơn cho original_question và issue
+    local safe_question
+    safe_question=$(echo "${original_question:-$message}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
+    
+    analyze_payload="{\"action\":\"analyze\",\"script_output\":$output_json,\"original_question\":\"$safe_question\",\"issue\":\"$safe_question\"}"
+    local analyze_response
+    analyze_response=$(send_api_request "process" "$analyze_payload")
+    auto_solve "$analyze_response" "${original_question:-$message}" 0
+    return 0
+  fi
+
+  if [[ "$action" == "analyze" ]]; then
+    # Đã xử lý ở trên, chỉ return
+    return 0
+  fi
+}
+
 # Hàm xử lý phản hồi từ API
 process_response() {
   local response="$1"
@@ -111,39 +195,30 @@ process_response() {
       description=$(echo "$response" | jq -r '.script.description // ""')
       prepare=$(echo "$response" | jq -r '.script.prepare // ""')
       
-      # Kiểm tra install dependencies trước
-      if [ -n "$prepare" ]; then
-        install_dependencies "$prepare"
-      fi
-      
-      # Tạo file script
+      # Tạo đường dẫn file trong thư mục shell
       script_path="$SHELL_DIR/$filename"
-      create_file "$script_path" "$content" "$type"
+      
+      # Hiển thị thông tin script
+      info_log "AI đã tạo script $filename"
+      info_log "Mô tả: $description"
       
       # Hỏi người dùng có muốn thực thi không
-      read -p "Bạn có muốn tạo file này không? (y/n): " answer
+      read -p "Bạn có muốn thực thi script này không? (y/n): " answer
       
       if [[ "$answer" == "y" ]]; then
-        # Thực thi script
-        execute_file "$script_path" "$type" "" "$description"
-        
-        # Kiểm tra lỗi và hỏi có sửa không
-        exit_status=$?
-        if [ $exit_status -ne 0 ]; then
-          read -p "File $script_path có lỗi. Bạn có muốn gửi thông tin lỗi đến AI để sửa không? (y/n): " fix_answer
-          
-          if [[ "$fix_answer" == "y" ]]; then
-            script_content=$(cat "$script_path")
-            error_message="Exit code: $exit_status"
-            
-            # Gửi yêu cầu sửa lỗi
-            fix_response=$(fix_script_error "$MESSAGE" "$error_message" "$script_content")
-            process_response "$fix_response"
-          fi
+        # Cài đặt các thư viện cần thiết nếu có
+        if [ -n "$prepare" ]; then
+          install_dependencies "$prepare"
         fi
         
-        # Hỏi có muốn xóa file hay không
-        read -p "Bạn có muốn giữ lại file $script_path? (y/n): " keep_answer
+        # Tạo file
+        create_file "$script_path" "$content" "$type"
+        
+        # Thực thi file
+        execute_file "$script_path" "$type" "" "$description"
+        
+        # Hỏi người dùng có muốn giữ lại file không
+        read -p "Bạn có muốn giữ lại file $script_path không? (y/n): " keep_answer
         if [[ "$keep_answer" != "y" ]]; then
           rm "$script_path"
           success_log "Đã xóa file $script_path"
@@ -197,26 +272,26 @@ chat_mode() {
     fi
     
     # Xử lý ký tự đặc biệt trong input của người dùng
-    user_input_escaped=$(echo "$user_input" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    user_input_escaped=$(echo "$user_input" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/\n/\\n/g')
     
     # Cập nhật lịch sử chat với tin nhắn của người dùng
-    history=$(echo "$history" | jq ". + [{\"role\": \"user\", \"content\": \"$user_input_escaped\"}]")
+    history=$(echo "$history" | jq -c ". + [{\"role\": \"user\", \"content\": \"$user_input_escaped\"}]")
     
     # Gửi yêu cầu đến API
     response=$(handle_chat "$user_input" "false" "$history")
     
     # Xử lý phản hồi
-    process_response "$response"
+    auto_solve "$response" "$user_input" 1
     
     # Trích xuất tin nhắn từ phản hồi
     message=$(echo "$response" | jq -r '.message // ""')
     
     # Xử lý ký tự đặc biệt trong tin nhắn của AI
-    message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/\n/\\n/g')
     
     # Cập nhật lịch sử chat với phản hồi của AI
     if [ -n "$message" ]; then
-      history=$(echo "$history" | jq ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
+      history=$(echo "$history" | jq -c ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
     fi
   done
   
@@ -282,43 +357,43 @@ Bạn có thể:
       fi
       
       # Xử lý phản hồi từ API
-      process_response "$analyze_response"
+      auto_solve "$analyze_response" "$file_path" 1
       
       # Trích xuất tin nhắn từ phản hồi
       message=$(echo "$analyze_response" | jq -r '.message // ""')
       
       # Xử lý ký tự đặc biệt trong tin nhắn của AI
-      message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+      message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/\n/\\n/g')
       
       # Cập nhật lịch sử chat với phản hồi của AI
       if [ -n "$message" ]; then
-        history=$(echo "$history" | jq ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
+        history=$(echo "$history" | jq -c ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
       fi
       
       continue
     fi
     
     # Xử lý ký tự đặc biệt trong input của người dùng
-    user_input_escaped=$(echo "$user_input" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    user_input_escaped=$(echo "$user_input" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/\n/\\n/g')
     
     # Cập nhật lịch sử chat với tin nhắn của người dùng
-    history=$(echo "$history" | jq ". + [{\"role\": \"user\", \"content\": \"$user_input_escaped\"}]")
+    history=$(echo "$history" | jq -c ". + [{\"role\": \"user\", \"content\": \"$user_input_escaped\"}]")
     
     # Gửi yêu cầu đến API
     response=$(handle_chat "$user_input" "true" "$history")
     
     # Xử lý phản hồi
-    process_response "$response"
+    auto_solve "$response" "$user_input" 1
     
     # Trích xuất tin nhắn từ phản hồi
     message=$(echo "$response" | jq -r '.message // ""')
     
     # Xử lý ký tự đặc biệt trong tin nhắn của AI
-    message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g')
+    message_escaped=$(echo "$message" | sed 's/"/\\"/g' | sed 's/\\/\\\\/g' | sed 's/\n/\\n/g')
     
     # Cập nhật lịch sử chat với phản hồi của AI
     if [ -n "$message" ]; then
-      history=$(echo "$history" | jq ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
+      history=$(echo "$history" | jq -c ". + [{\"role\": \"assistant\", \"content\": \"$message_escaped\"}]")
     fi
   done
   
@@ -463,7 +538,7 @@ process_offline_command() {
     execute_file "$script_path" "sh" "" "$description"
     
     # Hỏi có muốn xóa file hay không
-    read -p "Bạn có muốn giữ lại file $script_path? (y/n): " keep_answer
+    read -p "Bạn có muốn giữ lại file $script_path không? (y/n): " keep_answer
     if [[ "$keep_answer" != "y" ]]; then
       rm "$script_path"
       success_log "Đã xóa file $script_path"
@@ -512,7 +587,7 @@ main() {
         warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
         process_offline_command "$COMMAND ${PARAMS[*]}" "install"
       else
-        process_response "$response"
+        auto_solve "$response" "$MESSAGE" 1
       fi
       ;;
       
@@ -553,7 +628,7 @@ main() {
         warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
         process_offline_command "$COMMAND $type $filename" "create"
       else
-        process_response "$response"
+        auto_solve "$response" "$MESSAGE" 1
       fi
       ;;
       
@@ -584,7 +659,7 @@ main() {
           warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
           process_offline_command "$custom_request" "custom"
         else
-          process_response "$response"
+          auto_solve "$response" "$MESSAGE" 1
         fi
       else
         # Không có message, tự tạo yêu cầu từ lệnh và tham số
@@ -596,7 +671,7 @@ main() {
           warning_log "Không thể kết nối đến API server, chuyển sang chế độ offline"
           process_offline_command "$custom_request" "custom"
         else
-          process_response "$response"
+          auto_solve "$response" "$MESSAGE" 1
         fi
       fi
       ;;

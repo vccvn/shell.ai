@@ -311,275 +311,83 @@ function parsePackagesFromPrepare(prepareCommand) {
   return packages;
 }
 
-// Xử lý phản hồi từ API
-async function processResponse(response, args) {
+// Hàm xử lý phản hồi tự động nhiều bước
+async function autoSolve(response, args, originalQuestion = null, isFirstScript = true) {
   try {
-    // Kiểm tra xem phản hồi có phải là JSON hợp lệ không
-    if (typeof response !== 'object') {
-      errorLog('Phản hồi không phải là JSON hợp lệ');
-      debugLog(`Phản hồi: ${response}`);
-      return 1;
-    }
-    
-    // Kiểm tra success nếu có
-    if (response.hasOwnProperty('success') && !response.success) {
-      errorLog(`API trả về lỗi: ${response.message || 'Lỗi không xác định'}`);
-      return 1;
-    }
-    
-    // Định dạng mới trả về trực tiếp từ API
     const data = response.hasOwnProperty('data') ? response.data : response;
-    
-    if (config.DEBUG) {
-      debugLog(`Phản hồi đã xử lý: ${JSON.stringify(data)}`);
+    if (!data.action) {
+      errorLog('Phản hồi không có action');
+      return;
     }
-    
-    // Kiểm tra cấu trúc phản hồi
-    if (data.action) {
-      // Xử lý theo định dạng mới
-      const { action, message, script } = data;
-      
-      // Hiển thị message nếu có
-      if (message) {
-        console.log(`\n${message}\n`);
-      }
-      
-      // Xử lý script nếu có và action là 'run'
-      if (script && action === 'run') {
-        const { filename, content, type, description, prepare } = script;
-        
-        if (!filename || !content || !type) {
-          errorLog('Thiếu thông tin để tạo và thực thi file');
-          return 1;
-        }
-        
-        // Tạo đường dẫn file trong thư mục shell
-        const filePath = path.join(config.SHELL_DIR, filename);
-        
-        // Kiểm tra các thư viện cần thiết nếu có lệnh prepare
-        if (prepare) {
-          // Phân tích tên các package từ lệnh prepare
-          const packages = parsePackagesFromPrepare(prepare);
-          
-          // Kiểm tra từng package
-          for (const pkg of packages) {
-            const isInstalled = await checkPackageInstalled(pkg);
-            
-            if (!isInstalled) {
-              // Nếu package chưa được cài đặt, hỏi người dùng có muốn cài đặt không
-              rl.pause();
-              
-              console.log(`\nThư viện "${pkg}" chưa được cài đặt.`);
-              
-              // Sử dụng một phương pháp đơn giản để đọc input
-              let shouldInstall = false;
-              
-              // Sử dụng child_process.spawnSync để tạo một process riêng biệt
-              try {
-                const { spawnSync } = require('child_process');
-                process.stdout.write(`Bạn có muốn cài đặt thư viện "${pkg}" không? (y/n): `);
-                
-                // Sử dụng node để tạo một process con đọc một ký tự
-                const result = spawnSync('node', ['-e', `
-                  process.stdin.setEncoding('utf8');
-                  process.stdin.on('data', (data) => {
-                    const char = data.toString().trim().toLowerCase().charAt(0);
-                    process.stdout.write(char + '\\n');
-                    process.exit(char === 'y' ? 0 : 1);
-                  });
-                `], { stdio: 'inherit' });
-                
-                // Kiểm tra kết quả
-                shouldInstall = result.status === 0;
-              } catch (error) {
-                console.error('Lỗi khi đọc input:', error.message);
-                
-                // Fallback: sử dụng readline thông thường
-                const tempRl = readline.createInterface({
-                  input: process.stdin,
-                  output: process.stdout
-                });
-                
-                shouldInstall = await new Promise(resolve => {
-                  tempRl.question(`Bạn có muốn cài đặt thư viện "${pkg}" không? (y/n): `, answer => {
-                    tempRl.close();
-                    resolve(answer.trim().toLowerCase().charAt(0) === 'y');
-                  });
-                });
-              }
-              
-              // Khôi phục readline chính
-              rl.resume();
-              
-              // Thêm một khoảng trễ nhỏ để đảm bảo readline được khôi phục hoàn toàn
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              if (shouldInstall) {
-                // Cài đặt package
-                try {
-                  processingLog(`Đang cài đặt thư viện "${pkg}"...`);
-                  const { execSync } = require('child_process');
-                  execSync(`npm install ${pkg}`, { stdio: 'inherit' });
-                  successLog(`Đã cài đặt thư viện "${pkg}" thành công`);
-                } catch (error) {
-                  errorLog(`Lỗi khi cài đặt thư viện "${pkg}": ${error.message}`);
-                  infoLog('Tiếp tục mà không cài đặt thư viện.');
-                }
-              } else {
-                infoLog(`Bạn đã từ chối cài đặt thư viện "${pkg}".`);
-                infoLog('Tiếp tục mà không cài đặt thư viện. Script có thể không hoạt động đúng.');
-              }
-            }
-          }
-        }
-        
-        // Tạm dừng readline để hỏi người dùng
-        rl.pause();
-        
-        // Hỏi người dùng có muốn thực thi script không
-        console.log(`\nAI đã tạo script ${filename}`);
-        console.log(`Mô tả: ${description || 'Script được tạo bởi AI'}`);
-        
-        // Sử dụng một phương pháp đơn giản hơn để đọc input
-        let shouldExecute = false;
-        
-        // Sử dụng child_process.spawnSync để tạo một process riêng biệt
-        // Cách này sẽ không ảnh hưởng đến process chính
-        try {
-          const { spawnSync } = require('child_process');
-          process.stdout.write('Bạn có muốn thực thi script này không? (y/n): ');
-          
-          // Sử dụng node để tạo một process con đọc một ký tự
-          const result = spawnSync('node', ['-e', `
-            process.stdin.setEncoding('utf8');
-            process.stdin.on('data', (data) => {
-              const char = data.toString().trim().toLowerCase().charAt(0);
-              process.stdout.write(char + '\\n');
-              process.exit(char === 'y' ? 0 : 1);
-            });
-          `], { stdio: 'inherit' });
-          
-          // Kiểm tra kết quả
-          shouldExecute = result.status === 0;
-        } catch (error) {
-          console.error('Lỗi khi đọc input:', error.message);
-          
-          // Fallback: sử dụng readline thông thường
-          const tempRl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-          });
-          
-          shouldExecute = await new Promise(resolve => {
-            tempRl.question('Bạn có muốn thực thi script này không? (y/n): ', answer => {
-              tempRl.close();
-              resolve(answer.trim().toLowerCase().charAt(0) === 'y');
-            });
-          });
-        }
-        
-        // Khôi phục readline chính
-        rl.resume();
-        
-        // Thêm một khoảng trễ nhỏ để đảm bảo readline được khôi phục hoàn toàn
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        if (shouldExecute) {
-          // Cài đặt các thư viện cần thiết nếu có
-          if (prepare) {
-            await installDependencies(prepare);
-          }
-          
-          // Tạo file
-          await createFile(filePath, content, type);
-          
-          // Thực thi file
-          try {
-            processingLog(`Đang thực thi script ${filename}...`);
-            // Gọi executeFile với tham số description là null để không hiển thị mô tả
-            const exitCode = await executeFile(filePath, type, '', null);
-            
-            // Xóa file script sau khi thực thi xong
-            try {
-              await fs.promises.unlink(filePath);
-              debugLog(`Đã xóa file script ${filePath}`);
-            } catch (unlinkError) {
-              errorLog(`Không thể xóa file script: ${unlinkError.message}`);
-            }
-            
-            if (exitCode !== 0) {
-              errorLog(`Thực thi file thất bại với mã lỗi ${exitCode}`);
-            } else {
-              successLog(`Thực thi script ${filename} thành công`);
-            }
-          } catch (error) {
-            errorLog(`Lỗi khi thực thi file: ${error.message}`);
-            
-            // Xóa file script lỗi
-            try {
-              await fs.promises.unlink(filePath);
-              debugLog(`Đã xóa file script lỗi ${filePath}`);
-            } catch (unlinkError) {
-              errorLog(`Không thể xóa file script lỗi: ${unlinkError.message}`);
-            }
-          }
-        } else {
-          infoLog('Bạn đã từ chối thực thi script');
-        }
-      } else if (script && action === 'create') {
-        // Xử lý tạo file
-        const { filename, content, type, description } = script;
-        
-        if (!filename || !content) {
-          errorLog('Thiếu thông tin để tạo file');
-          return 1;
-        }
-        
-        // Tạo file tại vị trí hiện tại
-        await createFile(filename, content, type);
-        
-        if (description) {
-          infoLog(description);
-        }
-      } else if (action === 'input') {
-        // Xử lý yêu cầu nhập liệu
-        const { label = 'Nhập thông tin' } = data;
-        
-        console.log(`\n${message}\n`);
-        
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout
-        });
-        
-        const userInput = await new Promise((resolve) => {
-          rl.question(`${label}: `, (answer) => {
-            resolve(answer);
+    if (data.message) {
+      infoLog(data.message);
+    }
+    if (data.action === 'done' || data.action === 'chat' || data.action === 'show') {
+      // Đã có kết quả cuối cùng
+      return;
+    }
+    if (data.action === 'run' && data.script) {
+      const { filename, content, type, description, prepare } = data.script;
+      const filePath = path.join(config.SHELL_DIR, filename);
+      let shouldExecute = true;
+      if (isFirstScript) {
+        // Hỏi xác nhận lần đầu
+        const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+        shouldExecute = await new Promise(resolve => {
+          rl.question(`Bạn có muốn thực thi script ${filename} không? (y/n): `, answer => {
             rl.close();
+            resolve(answer.trim().toLowerCase().charAt(0) === 'y');
           });
         });
-        
-        // Hiển thị thông báo đang xử lý
-        processingLog('AI đang phản hồi...');
-        
-        // Gửi lại yêu cầu với thông tin bổ sung
-        const newResponse = await processRequest(userInput, 'run', '', '', config);
-        
-        // Xóa dòng "AI đang phản hồi..."
-        process.stdout.write('\x1b[1A\x1b[2K');
-        
-        await processResponse(newResponse, args);
       }
-      
-      return 0;
-    } else {
-      errorLog('Định dạng phản hồi không hợp lệ');
-      debugLog(`Phản hồi: ${JSON.stringify(data)}`);
-      return 1;
+      if (shouldExecute) {
+        if (prepare) await installDependencies(prepare);
+        await createFile(filePath, content, type);
+        // Thực thi script và lấy output
+        const { execSync } = require('child_process');
+        let output = '';
+        try {
+          if (type === 'sh' || type === 'bash') {
+            output = execSync(`bash "${filePath}"`, { encoding: 'utf8' });
+          } else if (type === 'js' || type === 'javascript') {
+            output = execSync(`node "${filePath}"`, { encoding: 'utf8' });
+          } else if (type === 'py' || type === 'python') {
+            output = execSync(`python3 "${filePath}"`, { encoding: 'utf8' });
+          } else {
+            output = execSync(`${filePath}`, { encoding: 'utf8' });
+          }
+        } catch (e) {
+          output = e.stdout ? e.stdout.toString() : '';
+          output += e.stderr ? '\n' + e.stderr.toString() : '';
+        }
+        // Gửi lại output cho AI với action analyze
+        const analyzePayload = {
+          action: 'analyze',
+          script_output: output,
+          original_question: originalQuestion || args.message || args.command || '',
+          issue: originalQuestion || args.message || args.command || ''
+        };
+        // Gửi yêu cầu analyze
+        const analyzeResponse = await processRequest(
+          analyzePayload.original_question,
+          'analyze',
+          '',
+          '',
+          config
+        );
+        // Đệ quy tiếp tục xử lý
+        await autoSolve(analyzeResponse, args, analyzePayload.original_question, false);
+      } else {
+        infoLog('Bạn đã từ chối thực thi script. Dừng lại.');
+        return;
+      }
+    } else if (data.action === 'analyze') {
+      // Nếu AI yêu cầu phân tích tiếp, gửi lại output (nếu có)
+      // (Trường hợp này đã được xử lý ở trên, nên chỉ cần dừng lại)
+      return;
     }
   } catch (error) {
-    errorLog(`Lỗi khi xử lý phản hồi: ${error.message}`);
-    return 1;
+    errorLog(`Lỗi autoSolve: ${error.message}`);
   }
 }
 
@@ -774,33 +582,7 @@ async function chatMode() {
             await createFile(filePath, content, type);
             
             // Thực thi file
-            try {
-              const exitCode = await executeFile(filePath, type, '', description);
-              
-              // Xóa file script sau khi thực thi xong
-              try {
-                await fs.promises.unlink(filePath);
-                debugLog(`Đã xóa file script ${filePath}`);
-              } catch (unlinkError) {
-                errorLog(`Không thể xóa file script: ${unlinkError.message}`);
-              }
-              
-              if (exitCode !== 0) {
-                errorLog(`Thực thi file thất bại với mã lỗi ${exitCode}`);
-              }
-            } catch (error) {
-              errorLog(`Lỗi khi thực thi file: ${error.message}`);
-              
-              // Xóa file script lỗi
-              try {
-                await fs.promises.unlink(filePath);
-                debugLog(`Đã xóa file script lỗi ${filePath}`);
-              } catch (unlinkError) {
-                errorLog(`Không thể xóa file script lỗi: ${unlinkError.message}`);
-              }
-            }
-          } else {
-            infoLog('Bạn đã từ chối thực thi script');
+            await executeFile(filePath, type, '', description);
           }
         } else if (data.script && data.action === 'create') {
           // Xử lý action create
@@ -906,6 +688,14 @@ async function devMode() {
       // Nếu người dùng chỉ nhập "help" thì hiển thị hướng dẫn sử dụng
       if (input.trim().toLowerCase() === 'help') {
         showUsage();
+        askQuestion();
+        return;
+      }
+      
+      // Nếu người dùng nhập đúng từ "clear" thì xóa lịch sử chat
+      if (input.trim().toLowerCase() === 'clear') {
+        await clearChatHistory(true);
+        infoLog('Đã xóa lịch sử chat.');
         askQuestion();
         return;
       }
@@ -1081,33 +871,7 @@ async function devMode() {
             await createFile(filePath, content, type);
             
             // Thực thi file
-            try {
-              const exitCode = await executeFile(filePath, type, '', description);
-              
-              // Xóa file script sau khi thực thi xong
-              try {
-                await fs.promises.unlink(filePath);
-                debugLog(`Đã xóa file script ${filePath}`);
-              } catch (unlinkError) {
-                errorLog(`Không thể xóa file script: ${unlinkError.message}`);
-              }
-              
-              if (exitCode !== 0) {
-                errorLog(`Thực thi file thất bại với mã lỗi ${exitCode}`);
-              }
-            } catch (error) {
-              errorLog(`Lỗi khi thực thi file: ${error.message}`);
-              
-              // Xóa file script lỗi
-              try {
-                await fs.promises.unlink(filePath);
-                debugLog(`Đã xóa file script lỗi ${filePath}`);
-              } catch (unlinkError) {
-                errorLog(`Không thể xóa file script lỗi: ${unlinkError.message}`);
-              }
-            }
-          } else {
-            infoLog('Bạn đã từ chối thực thi script');
+            await executeFile(filePath, type, '', description);
           }
         } else if (data.script && data.action === 'create') {
           // Xử lý action create
@@ -1511,7 +1275,7 @@ async function main() {
         
         // Gửi yêu cầu và xử lý phản hồi
         const installResponse = await processRequest(installIssue, 'run', 'sh', '', config);
-        await processResponse(installResponse, args);
+        await autoSolve(installResponse, args);
         break;
         
       case 'check':
@@ -1531,7 +1295,7 @@ async function main() {
         
         // Gửi yêu cầu và xử lý phản hồi
         const checkResponse = await processRequest(checkIssue, 'run', 'js', '', config);
-        await processResponse(checkResponse, args);
+        await autoSolve(checkResponse, args);
         break;
         
       case 'create':
@@ -1550,7 +1314,7 @@ async function main() {
         
         // Gửi yêu cầu và xử lý phản hồi
         const createResponse = await processRequest(createIssue, 'create', 'file', filename, config);
-        await processResponse(createResponse, args);
+        await autoSolve(createResponse, args);
         break;
         
       case 'chat':
@@ -1609,7 +1373,7 @@ async function main() {
         
         // Gửi yêu cầu và xử lý phản hồi
         const directResponse = await processRequest(args.message, 'run', '', '', config);
-        await processResponse(directResponse, args);
+        await autoSolve(directResponse, args);
         break;
         
       default:
@@ -1622,7 +1386,7 @@ async function main() {
         
         // Gửi yêu cầu và xử lý phản hồi
         const customResponse = await processRequest(customIssue, 'run', '', '', config);
-        await processResponse(customResponse, args);
+        await autoSolve(customResponse, args);
         break;
     }
   } catch (error) {

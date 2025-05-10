@@ -98,6 +98,14 @@ get_system_info() {
   os_type=$(uname -s)
   os_version=$(uname -r)
   
+  # Nếu là macOS, lấy tên và version chuẩn
+  if [[ "$os_type" == "Darwin" ]]; then
+    if command -v sw_vers &> /dev/null; then
+      os_type="macOS"
+      os_version=$(sw_vers -productVersion)
+    fi
+  fi
+  
   # Lấy thông tin kiến trúc
   arch=$(uname -m)
   

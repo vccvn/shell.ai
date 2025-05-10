@@ -7,13 +7,44 @@ const openaiService = require('../services/openai.service');
  */
 async function processIssue(req, res) {
   try {
-    const { issue, action = 'run', type, target, filename, system_info, suggest_type } = req.body;
+    const { issue: rawIssue, action = 'run', type, target, filename, system_info, suggest_type, script_output, original_question } = req.body;
+    
+    // Nếu không có issue mà có original_question thì gán lại
+    const issue = rawIssue || original_question;
     
     if (!issue) {
       return res.status(400).json({ 
         success: false, 
         message: 'Thiếu nội dung yêu cầu (issue)' 
       });
+    }
+    
+    // Nếu là action analyze và có script_output: phân tích output script
+    if (action === 'analyze' && script_output) {
+      // Đọc prompt hệ thống từ file nếu có
+      let systemPrompt = '';
+      try {
+        const fs = require('fs');
+        if (fs.existsSync('auto_solve_prompt.txt')) {
+          systemPrompt = fs.readFileSync('auto_solve_prompt.txt', 'utf8');
+        }
+      } catch (e) {}
+      const prompt = `
+${systemPrompt}
+
+Đây là output script vừa chạy:
+${script_output}
+
+Câu hỏi gốc của người dùng: ${original_question || issue || ''}
+
+Nếu cần kiểm tra thêm, hãy trả về action 'run' và script mới. Nếu đã đủ thông tin, trả về action 'done' cùng message kết luận cuối cùng.`;
+      const aiResponse = await openaiService.getCompletion(prompt);
+      try {
+        let responseData = typeof aiResponse === 'string' ? JSON.parse(aiResponse) : aiResponse;
+        return res.status(200).json(responseData);
+      } catch (error) {
+        return res.status(500).json({ success: false, message: 'Lỗi khi phân tích phản hồi từ AI', error: error.message, response: aiResponse });
+      }
     }
     
     // Tạo prompt cho OpenAI dựa trên action
@@ -185,6 +216,13 @@ async function processIssue(req, res) {
       6. Đảm bảo xử lý lỗi đầy đủ trong script, hiển thị thông báo lỗi phù hợp.
       7. QUAN TRỌNG: Trả về JSON hợp lệ, không sử dụng backticks trong phản hồi JSON.
       8. KHÔNG SỬ DỤNG KÝ TỰ \\n TRONG NỘI DUNG SCRIPT, hãy xuống dòng thực tế thay vì sử dụng \\n.
+      9. Phần prepare chỉ nên chứa các lệnh cài đặt thư viện/dependencies cần thiết để chạy script, ví dụ:
+         - Node.js: npm install axios
+         - Python: pip install requests
+         - PHP: composer require guzzlehttp/guzzle
+         KHÔNG thêm các lệnh cài đặt service như nginx, apache, mysql,...
+           ví dụ người dùng yêu cầu kiểm tra lỗi nginx, thì không cần thêm các lệnh cài đặt nginx, chỉ cần thêm lệnh kiểm tra lỗi nginx.
+           tương tự với nhưng các service khác như apache, mysql, ...
       
       Hãy phản hồi CHÍNH XÁC theo định dạng JSON sau, KHÔNG thêm bất kỳ văn bản nào trước hoặc sau JSON:
       {
@@ -322,6 +360,14 @@ async function fixScriptError(req, res) {
         "prepare": "các lệnh cài đặt thư viện cần thiết (nếu có)"
       }
     }
+    Lưu ý phần prepare:
+       * Phần prepare chỉ nên chứa các lệnh cài đặt thư viện/dependencies cần thiết để chạy script, ví dụ:
+         - Node.js: npm install axios
+         - Python: pip install requests
+         - PHP: composer require guzzlehttp/guzzle
+         KHÔNG thêm các lệnh cài đặt service như nginx, apache, mysql,...
+           ví dụ người dùng yêu cầu kiểm tra lỗi nginx, thì không cần thêm các lệnh cài đặt nginx, chỉ cần thêm lệnh kiểm tra lỗi nginx.
+           tương tự với nhưng các service khác như apache, mysql, ...
     
     QUAN TRỌNG: Trả về JSON hợp lệ, không sử dụng backticks trong phản hồi JSON.
     KHÔNG bao gồm bất kỳ văn bản nào trước hoặc sau đối tượng JSON.
@@ -395,13 +441,40 @@ async function fixScriptError(req, res) {
  */
 async function handleChat(req, res) {
   try {
-    const { message, system_info, mode, history = [], suggest_type } = req.body;
+    const { message, system_info, mode, history = [], suggest_type, action, script_output, original_question } = req.body;
     
     if (!message) {
       return res.status(400).json({ 
         success: false, 
         message: 'Thiếu nội dung tin nhắn' 
       });
+    }
+    
+    // Xử lý action analyze cho dev mode
+    if (action === 'analyze' && script_output) {
+      let systemPrompt = '';
+      try {
+        const fs = require('fs');
+        if (fs.existsSync('auto_solve_prompt.txt')) {
+          systemPrompt = fs.readFileSync('auto_solve_prompt.txt', 'utf8');
+        }
+      } catch (e) {}
+      const prompt = `
+${systemPrompt}
+
+Đây là output script vừa chạy:
+${script_output}
+
+Câu hỏi gốc của người dùng: ${original_question || message || ''}
+
+Nếu cần kiểm tra thêm, hãy trả về action 'run' và script mới. Nếu đã đủ thông tin, trả về action 'done' cùng message kết luận cuối cùng.`;
+      const aiResponse = await openaiService.getCompletion(prompt);
+      try {
+        let responseData = typeof aiResponse === 'string' ? JSON.parse(aiResponse) : aiResponse;
+        return res.status(200).json(responseData);
+      } catch (error) {
+        return res.status(500).json({ success: false, message: 'Lỗi khi phân tích phản hồi từ AI', error: error.message, response: aiResponse });
+      }
     }
     
     // Tạo thông tin hệ thống nếu có

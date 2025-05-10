@@ -68,7 +68,9 @@
       {
         "from": ".",
         "to": "extra",
-        "filter": ["api.keys.example.json"]
+        "filter": [
+          "api.keys.example.json"
+        ]
       }
     ],
     "mac": {
