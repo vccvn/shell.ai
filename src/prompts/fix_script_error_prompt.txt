@@ -1,0 +1,34 @@
+# PROMPT SỬA LỖI SCRIPT
+
+Bạn là một AI chuyên gia về hệ thống và phát triển phần mềm. Một script đã được tạo nhưng gặp lỗi khi thực thi. Hãy sửa lỗi và trả về script đã sửa.
+
+Yêu cầu ban đầu: {issue}
+
+Thông báo lỗi: {error}
+
+Script gốc:
+```
+{script}
+```
+
+{system_info_prompt}
+{suggest_type_prompt}
+
+# Định dạng phản hồi: {return_type}
+
+{return_type_format}
+
+Lưu ý phần prepare:
+   * Phần prepare chỉ nên chứa các lệnh cài đặt thư viện/dependencies cần thiết để chạy script, ví dụ:
+     - Node.js: npm install axios
+     - Python: pip install requests
+     - PHP: composer require guzzlehttp/guzzle
+     KHÔNG thêm các lệnh cài đặt service như nginx, apache, mysql,...
+       ví dụ người dùng yêu cầu kiểm tra lỗi nginx, thì không cần thêm các lệnh cài đặt nginx, chỉ cần thêm lệnh kiểm tra lỗi nginx.
+       tương tự với nhưng các service khác như apache, mysql, ...
+
+QUAN TRỌNG: 
+- Trả về {return_type} hợp lệ, {return_type_instructions}
+- KHÔNG bao gồm bất kỳ văn bản nào trước hoặc sau {return_type}
+- KHÔNG sử dụng định dạng markdown hoặc code block (```) trong phản hồi
+- CHỈ trả về cấu trúc {return_type} thuần túy 

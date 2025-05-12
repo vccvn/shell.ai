@@ -5,6 +5,17 @@
  * Thay thế cho shellai.sh, xử lý tham số dòng lệnh và gọi các hàm từ các module khác
  */
 
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const { xml2js } = require('xml-js');
+const { execSync } = require('child_process');
+const readline = require('readline');
+const os = require('os');
+
 const { 
   processRequest, 
   handleChat, 
@@ -23,31 +34,31 @@ const {
   clearChatHistory
 } = require('./src/utils/chatHistory');
 
-const path = require('path');
-const fs = require('fs');
-const { execSync } = require('child_process');
-const readline = require('readline');
-const os = require('os');
-
 // Biến môi trường
 const config = {
   API_URL: process.env.API_URL || 'http://localhost:3000/api/agent',
   SHELL_DIR: process.env.SHELL_DIR || './src/shell',
   DEBUG: process.env.DEBUG === 'true' || false,
+  DEBUG_LEVEL: parseInt(process.env.DEBUG_LEVEL || '1', 10),
   FIRST_REQUEST: true,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
   API_KEY: process.env.API_KEY || '',
-  MODEL: process.env.MODEL || 'gpt-4'
+  MODEL: process.env.MODEL || 'gpt-4',
+  RETURN_TYPE: process.env.RETURN_TYPE || 'xml' // Mặc định sử dụng XML cho shellai.js
 };
+
+// Chia sẻ config với các module khác
+global.config = config;
 
 // Tạo thư mục shell nếu chưa tồn tại
 if (!fs.existsSync(config.SHELL_DIR)) {
   fs.mkdirSync(config.SHELL_DIR, { recursive: true });
+  debugLog(`Đã tạo thư mục ${config.SHELL_DIR}`, 1);
 }
 
 // Hàm hiển thị hướng dẫn sử dụng
 function showUsage() {
-  console.log(`Cách sử dụng: ${path.basename(process.argv[1])} [lệnh] [tham số] [-m "mô tả"] [--debug]
+  console.log(`Cách sử dụng: ${path.basename(process.argv[1])} [lệnh] [tham số] [-m "mô tả"] [--debug] [--debug=LEVEL] [-v]
 
 Các lệnh:
   install <pkg1> <pkg2> ...    Cài đặt các gói phần mềm
@@ -60,7 +71,9 @@ Các lệnh:
 
 Các tùy chọn:
   -m, --message "nội dung"     Mô tả chi tiết yêu cầu
-  --debug                      Hiển thị thông tin debug
+  --debug                      Hiển thị thông tin debug (cấp độ 1)
+  --debug=LEVEL                Hiển thị thông tin debug với cấp độ chi tiết (1-3)
+  -v, --verbose                Tăng cấp độ chi tiết debug
   -h, --help                   Hiển thị hướng dẫn sử dụng
 
 Ví dụ:
@@ -79,7 +92,8 @@ function parseArgs() {
     command: '',
     params: [],
     message: '',
-    debug: config.DEBUG
+    debug: config.DEBUG,
+    debugLevel: config.DEBUG_LEVEL
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -92,6 +106,21 @@ function parseArgs() {
     } else if (arg === '--debug') {
       args.debug = true;
       config.DEBUG = true;
+    } else if (arg.startsWith('--debug=')) {
+      // Hỗ trợ cấp độ debug (--debug=2)
+      const level = parseInt(arg.split('=')[1], 10);
+      if (!isNaN(level) && level > 0) {
+        args.debug = true;
+        args.debugLevel = level;
+        config.DEBUG = true;
+        config.DEBUG_LEVEL = level;
+      }
+    } else if (arg === '-v' || arg === '--verbose') {
+      // Tăng cấp độ debug lên 1
+      args.debug = true;
+      args.debugLevel = Math.min(args.debugLevel + 1, 3);
+      config.DEBUG = true;
+      config.DEBUG_LEVEL = args.debugLevel;
     } else if (arg === '-h' || arg === '--help') {
       showUsage();
       process.exit(0);
@@ -107,10 +136,10 @@ function parseArgs() {
   return args;
 }
 
-// Hàm debug log
-function debugLog(message) {
-  if (config.DEBUG) {
-    console.error(`[DEBUG] ${message}`);
+// Hàm debug log với cấp độ chi tiết
+function debugLog(message, level = 1) {
+  if (config.DEBUG && level <= config.DEBUG_LEVEL) {
+    console.error(`[DEBUG${level > 1 ? '-' + level : ''}] ${message}`);
   }
 }
 
@@ -134,7 +163,68 @@ function processingLog(message) {
   console.log(`\x1b[33m[ĐANG XỬ LÝ]\x1b[0m ${message}`);
 }
 
-// Kiểm tra curl đã được cài đặt chưa
+// Hàm trích xuất giá trị từ XML
+function extractFromXml(xml, xpath) {
+  try {
+    // Chuyển đổi XML thành object
+    const result = xml2js(xml, { compact: true, spaces: 2 });
+    
+    // Trích xuất dữ liệu dựa trên xpath
+    const paths = xpath.replace(/^string\((.*)\)$/, '$1').split('/').filter(p => p);
+    let current = result;
+    
+    // Bỏ qua phần đầu tiên nếu là "//response"
+    if (paths[0] === '' && paths[1] === 'response') {
+      paths.splice(0, 2);
+      current = result.response;
+    } else if (paths[0] === 'response') {
+      paths.splice(0, 1);
+      current = result.response;
+    }
+    
+    // Duyệt qua các phần tử còn lại của đường dẫn
+    for (const p of paths) {
+      if (!current) break;
+      current = current[p];
+    }
+    
+    if (current && current._text !== undefined) {
+      return current._text;
+    } else if (typeof current === 'string') {
+      return current;
+    } else if (current && typeof current === 'object') {
+      // Nếu là object phức tạp, xử lý để chuyển các _text thành giá trị trực tiếp
+      const convertXmlObject = (obj) => {
+        if (!obj) return obj;
+        
+        const result = {};
+        
+        Object.keys(obj).forEach(key => {
+          if (obj[key] && typeof obj[key] === 'object') {
+            if (obj[key]._text !== undefined) {
+              result[key] = obj[key]._text;
+            } else {
+              result[key] = convertXmlObject(obj[key]);
+            }
+          } else {
+            result[key] = obj[key];
+          }
+        });
+        
+        return result;
+      };
+      
+      return convertXmlObject(current);
+    }
+    
+    return null;
+  } catch (error) {
+    debugLog(`Lỗi khi trích xuất XML: ${error.message}`);
+    return null;
+  }
+}
+
+// Hàm kiểm tra curl đã được cài đặt chưa
 function checkCurl() {
   try {
     execSync('curl --version', { stdio: 'ignore' });
@@ -178,6 +268,23 @@ function checkCurl() {
   }
 }
 
+// Kiểm tra XML tools đã được cài đặt chưa
+function checkXmlTools() {
+  try {
+    // Kiểm tra xml-js package
+    require('xml-js');
+  } catch (error) {
+    errorLog('Thư viện xml-js chưa được cài đặt. Đang cài đặt...');
+    try {
+      execSync('npm install xml-js', { stdio: 'inherit' });
+      infoLog('Đã cài đặt xml-js thành công.');
+    } catch (installError) {
+      errorLog(`Không thể cài đặt xml-js: ${installError.message}`);
+      process.exit(1);
+    }
+  }
+}
+
 // Hàm đọc nội dung file
 async function readFileContent(filePath) {
   try {
@@ -194,108 +301,131 @@ async function askUserToFixScript(filePath, errorMessage) {
     input: process.stdin,
     output: process.stdout
   });
-
+  
   return new Promise((resolve) => {
-    rl.question(`File ${filePath} có lỗi: ${errorMessage}\nBạn có muốn gửi thông tin lỗi đến AI để sửa không? (y/n): `, (answer) => {
+    rl.question(`Script ${filePath} bị lỗi:\n${errorMessage}\n\nBạn có muốn AI sửa lỗi này không? (y/n): `, (answer) => {
       rl.close();
       resolve(answer.toLowerCase() === 'y');
     });
   });
 }
 
-// Hàm kiểm tra xem thư viện đã được cài đặt chưa
+// Kiểm tra package đã được cài đặt chưa
 async function checkPackageInstalled(packageName) {
-  // Danh sách các thư viện có sẵn trong Node.js
-  const builtInModules = [
-    'child_process', 'fs', 'path', 'http', 'https', 'url', 'net', 'util', 
-    'os', 'crypto', 'events', 'stream', 'readline', 'buffer', 'querystring',
-    'zlib', 'cluster', 'dgram', 'dns', 'module', 'process', 'timers',
-    'tls', 'console', 'assert', 'tty', 'v8', 'vm'
-  ];
-  
-  // Nếu là thư viện có sẵn, coi như đã cài đặt
-  if (builtInModules.includes(packageName)) {
-    debugLog(`"${packageName}" là thư viện có sẵn trong Node.js, không cần cài đặt.`);
-    return true;
-  }
-  
-  try {
-    // Kiểm tra xem có thể require module không
-    require.resolve(packageName);
-    return true;
-  } catch (e) {
-    // Nếu không thể require, thử kiểm tra bằng npm list
+  // Phát hiện loại package manager từ lệnh cài đặt
+  if (packageName.includes('pip')) {
+    // Package là Python package
     try {
-      const { exec } = require('child_process');
-      return new Promise((resolve) => {
-        exec(`npm list ${packageName} --depth=0`, (error, stdout, stderr) => {
-          if (error) {
-            // Lỗi khi chạy npm list, có thể là thư viện chưa được cài đặt
-            resolve(false);
-          } else if (stdout.includes('(empty)') || stdout.includes('UNMET DEPENDENCY')) {
-            // npm list trả về empty hoặc UNMET DEPENDENCY
-            resolve(false);
-          } else {
-            // Thư viện đã được cài đặt
-            resolve(true);
-          }
-        });
-      });
-    } catch (error) {
+      const pipResult = await execPromise(`pip list | grep -i "${packageName.replace('pip install ', '')}"`, { shell: true });
+      return pipResult.stdout.trim() !== '';
+    } catch (e) {
       return false;
     }
+  } else if (packageName.includes('npm')) {
+    // Package là Node.js package
+    try {
+      const npmResult = await execPromise(`npm list ${packageName.replace('npm install ', '')} | grep -i "${packageName.replace('npm install ', '')}"`, { shell: true });
+      return npmResult.stdout.trim() !== '';
+    } catch (e) {
+      return false;
+    }
+  } else if (packageName.includes('gem')) {
+    // Package là Ruby gem
+    try {
+      const gemResult = await execPromise(`gem list | grep -i "${packageName.replace('gem install ', '')}"`, { shell: true });
+      return gemResult.stdout.trim() !== '';
+    } catch (e) {
+      return false;
+    }
+  } else {
+    // Kiểm tra nếu là command cài đặt với Homebrew (trên macOS)
+    if (packageName.includes('brew install')) {
+      const brewPackage = packageName.replace('brew install ', '');
+      try {
+        const brewResult = await execPromise(`brew list | grep -i "${brewPackage}"`, { shell: true });
+        return brewResult.stdout.trim() !== '';
+      } catch (e) {
+        return false;
+      }
+    } else if (packageName.includes('apt-get install') || packageName.includes('apt install')) {
+      // Kiểm tra nếu là command cài đặt với apt (trên Ubuntu/Debian)
+      const aptPackage = packageName.replace(/apt(-get)? install -y /, '');
+      try {
+        const aptResult = await execPromise(`dpkg -l | grep -i "${aptPackage}"`, { shell: true });
+        return aptResult.stdout.trim() !== '';
+      } catch (e) {
+        return false;
+      }
+    } else if (packageName.includes('yum install')) {
+      // Kiểm tra nếu là command cài đặt với yum (trên CentOS/RHEL/Fedora)
+      const yumPackage = packageName.replace('yum install -y ', '');
+      try {
+        const yumResult = await execPromise(`rpm -qa | grep -i "${yumPackage}"`, { shell: true });
+        return yumResult.stdout.trim() !== '';
+      } catch (e) {
+        return false;
+      }
+    }
   }
+  
+  return false; // Mặc định là chưa cài đặt
 }
 
-// Hàm phân tích câu lệnh prepare để lấy tên các package
+// Phân tích các package cần cài đặt từ lệnh prepare
 function parsePackagesFromPrepare(prepareCommand) {
   const packages = [];
   
-  // Phân tích lệnh npm install/i
-  const npmInstallRegex = /npm\s+(?:i|install|add)\s+((?:@[\w-]+\/)?[\w-]+(?:@[\w.-]+)?(?:\s+(?:@[\w-]+\/)?[\w-]+(?:@[\w.-]+)?)*)/g;
+  // Tách các lệnh nếu có nhiều lệnh được phân tách bằng dấu chấm phẩy
+  const commands = prepareCommand.split(';').map(cmd => cmd.trim()).filter(cmd => cmd);
   
-  // Phân tích lệnh yarn add
-  const yarnAddRegex = /yarn\s+(?:add)\s+((?:@[\w-]+\/)?[\w-]+(?:@[\w.-]+)?(?:\s+(?:@[\w-]+\/)?[\w-]+(?:@[\w.-]+)?)*)/g;
-  
-  // Phân tích lệnh pnpm add/install
-  const pnpmInstallRegex = /pnpm\s+(?:add|install|i)\s+((?:@[\w-]+\/)?[\w-]+(?:@[\w.-]+)?(?:\s+(?:@[\w-]+\/)?[\w-]+(?:@[\w.-]+)?)*)/g;
-  
-  // Tìm trong lệnh npm
-  let match;
-  while ((match = npmInstallRegex.exec(prepareCommand)) !== null) {
-    const packageList = match[1].split(/\s+/);
-    packageList.forEach(pkg => {
-      // Loại bỏ phiên bản nếu có
-      const pkgName = pkg.split('@')[0] || pkg;
-      if (pkgName && !packages.includes(pkgName)) {
-        packages.push(pkgName);
-      }
-    });
+  for (const cmd of commands) {
+    // Xử lý lệnh npm
+    if (cmd.startsWith('npm install')) {
+      // Tách các package từ lệnh npm install
+      const npmPkgs = cmd.replace('npm install', '').trim().split(' ');
+      packages.push(...npmPkgs.filter(pkg => pkg && !pkg.startsWith('-')));
+    }
+    
+    // Xử lý lệnh pip
+    else if (cmd.startsWith('pip install') || cmd.startsWith('pip3 install')) {
+      // Tách các package từ lệnh pip install
+      const pipPkgs = cmd.replace(/pip3? install/, '').trim().split(' ');
+      packages.push(...pipPkgs.filter(pkg => pkg && !pkg.startsWith('-')));
+    }
+    
+    // Xử lý lệnh apt-get hoặc apt
+    else if (cmd.startsWith('apt-get install') || cmd.startsWith('apt install')) {
+      // Tách các package từ lệnh apt-get install
+      const aptPkgs = cmd.replace(/apt(-get)? install( -y)?/, '').trim().split(' ');
+      packages.push(...aptPkgs.filter(pkg => pkg && !pkg.startsWith('-')));
+    }
+    
+    // Xử lý lệnh yum
+    else if (cmd.startsWith('yum install')) {
+      // Tách các package từ lệnh yum install
+      const yumPkgs = cmd.replace(/yum install( -y)?/, '').trim().split(' ');
+      packages.push(...yumPkgs.filter(pkg => pkg && !pkg.startsWith('-')));
+    }
+    
+    // Xử lý lệnh brew
+    else if (cmd.startsWith('brew install')) {
+      // Tách các package từ lệnh brew install
+      const brewPkgs = cmd.replace('brew install', '').trim().split(' ');
+      packages.push(...brewPkgs.filter(pkg => pkg && !pkg.startsWith('-')));
+    }
+    
+    // Xử lý các lệnh khác nếu cần...
   }
   
-  // Tìm trong lệnh yarn
-  while ((match = yarnAddRegex.exec(prepareCommand)) !== null) {
-    const packageList = match[1].split(/\s+/);
-    packageList.forEach(pkg => {
-      // Loại bỏ phiên bản nếu có
-      const pkgName = pkg.split('@')[0] || pkg;
-      if (pkgName && !packages.includes(pkgName)) {
-        packages.push(pkgName);
+  // Xử lý các package có thêm version (ví dụ: axios@1.2.3)
+  packages.forEach((pkg, index) => {
+    if (pkg.includes('@')) {
+      const pkgName = pkg.split('@')[0];
+      if (pkgName) {
+        packages[index] = pkgName;
       }
-    });
-  }
-  
-  // Tìm trong lệnh pnpm
-  while ((match = pnpmInstallRegex.exec(prepareCommand)) !== null) {
-    const packageList = match[1].split(/\s+/);
-    packageList.forEach(pkg => {
-      // Loại bỏ phiên bản nếu có
-      const pkgName = pkg.split('@')[0] || pkg;
-      if (pkgName && !packages.includes(pkgName)) {
-        packages.push(pkgName);
-      }
-    });
-  }
+    }
+  });
   
   // Xử lý các package có tên đầy đủ (scoped packages)
   packages.forEach((pkg, index) => {
@@ -314,32 +444,63 @@ function parsePackagesFromPrepare(prepareCommand) {
 // Hàm xử lý phản hồi tự động nhiều bước
 async function autoSolve(response, args, originalQuestion = null, isFirstScript = true) {
   try {
-    const data = response.hasOwnProperty('data') ? response.data : response;
+    let data;
+    
+    // Kiểm tra xem response có phải là XML hay không
+    if (typeof response === 'string' && response.includes('<response>')) {
+      // Parse XML to object
+      data = {
+        action: extractFromXml(response, 'string(//response/action)'),
+        message: extractFromXml(response, 'string(//response/message)'),
+        script: null,
+        confirm_message: extractFromXml(response, 'string(//response/confirm_message)')
+      };
+      
+      // Extract script info if available
+      if (response.includes('<script>')) {
+        data.script = {
+          filename: extractFromXml(response, 'string(//response/script/filename)'),
+          content: extractFromXml(response, 'string(//response/script/content)'),
+          type: extractFromXml(response, 'string(//response/script/type)'),
+          description: extractFromXml(response, 'string(//response/script/description)'),
+          prepare: extractFromXml(response, 'string(//response/script/prepare)')
+        };
+      }
+    } else {
+      data = response.hasOwnProperty('data') ? response.data : response;
+    }
+    
     if (!data.action) {
       errorLog('Phản hồi không có action');
       return;
     }
+    
     if (data.message) {
       infoLog(data.message);
     }
+    
     if (data.action === 'done' || data.action === 'chat' || data.action === 'show') {
       // Đã có kết quả cuối cùng
       return;
     }
+    
     if (data.action === 'run' && data.script) {
       const { filename, content, type, description, prepare } = data.script;
       const filePath = path.join(config.SHELL_DIR, filename);
       let shouldExecute = true;
+      let confirmMessage = data.confirm_message || 'Bạn có muốn thực thi script này không? (y/n): ';
+      
       if (isFirstScript) {
         // Hỏi xác nhận lần đầu
         const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
         shouldExecute = await new Promise(resolve => {
-          rl.question(`Bạn có muốn thực thi script ${filename} không? (y/n): `, answer => {
+          rl.question(confirmMessage, answer => {
             rl.close();
             resolve(answer.trim().toLowerCase().charAt(0) === 'y');
           });
         });
       }
+      
       if (shouldExecute) {
         if (prepare) await installDependencies(prepare);
         await createFile(filePath, content, type);
@@ -360,6 +521,8 @@ async function autoSolve(response, args, originalQuestion = null, isFirstScript 
           output = e.stdout ? e.stdout.toString() : '';
           output += e.stderr ? '\n' + e.stderr.toString() : '';
         }
+        // Xóa file script sau khi thực thi
+        try { fs.unlinkSync(filePath); } catch (e) {}
         // Gửi lại output cho AI với action analyze
         const analyzePayload = {
           action: 'analyze',
@@ -373,7 +536,8 @@ async function autoSolve(response, args, originalQuestion = null, isFirstScript 
           'analyze',
           '',
           '',
-          config
+          config,
+          { scriptOutput: output }
         );
         // Đệ quy tiếp tục xử lý
         await autoSolve(analyzeResponse, args, analyzePayload.original_question, false);
@@ -400,8 +564,12 @@ async function chatMode() {
     output: process.stdout
   });
   
-  // Khởi tạo lịch sử trò chuyện
-  const chatHistory = [];
+  // Khởi tạo lịch sử trò chuyện từ file
+  let chatHistory = await readChatHistory(false);
+  
+  if (config.DEBUG) {
+    debugLog(`Đã tải ${chatHistory.length} tin nhắn từ lịch sử chat`, 2);
+  }
   
   const askQuestion = () => {
     rl.question('> ', async (input) => {
@@ -411,8 +579,24 @@ async function chatMode() {
         return;
       }
       
+      // Nếu người dùng nhập đúng từ "clear" thì xóa lịch sử chat
+      if (input.trim().toLowerCase() === 'clear') {
+        await clearChatHistory(false);
+        chatHistory = [];
+        infoLog('Đã xóa lịch sử chat.');
+        askQuestion();
+        return;
+      }
+      
       // Hiển thị thông báo đang xử lý
       processingLog('AI đang phản hồi...');
+      
+      // Thêm tin nhắn của người dùng vào lịch sử
+      chatHistory = addMessage('user', input, chatHistory);
+      
+      if (config.DEBUG) {
+        debugLog(`Đã thêm tin nhắn người dùng vào lịch sử, tổng số tin nhắn: ${chatHistory.length}`, 2);
+      }
       
       // Gửi yêu cầu và lấy phản hồi
       const response = await handleChat(input, config, false, chatHistory);
@@ -421,7 +605,7 @@ async function chatMode() {
       process.stdout.write('\x1b[1A\x1b[2K');
       
       if (config.DEBUG) {
-        debugLog(`Phản hồi đầy đủ: ${JSON.stringify(response)}`);
+        debugLog(`Phản hồi đầy đủ: ${JSON.stringify(response)}`, 2);
       }
       
       // Xử lý phản hồi theo định dạng mới
@@ -429,12 +613,49 @@ async function chatMode() {
         // Định dạng mới trả về trực tiếp từ API
         const data = response.hasOwnProperty('data') ? response.data : response;
         
+        // Nếu API trả về history, cập nhật lịch sử chat
+        if (response.history && Array.isArray(response.history)) {
+          chatHistory = response.history;
+          if (config.DEBUG) {
+            debugLog(`Cập nhật lịch sử chat từ API, tổng số tin nhắn: ${chatHistory.length}`, 2);
+          }
+          // Lưu lịch sử chat ngay lập tức
+          await saveChatHistory(chatHistory, false);
+        }
+        
         // Hiển thị message nếu có
         if (data.message) {
           console.log(`\n${data.message}\n`);
+          
+          // Chỉ thêm phản hồi vào lịch sử nếu API không trả về history
+          if (!response.history) {
+            // Thêm phản hồi của AI vào lịch sử
+            chatHistory = addMessage('assistant', data.message, chatHistory);
+            
+            // Lưu lịch sử chat
+            await saveChatHistory(chatHistory, false);
+            
+            if (config.DEBUG) {
+              debugLog(`Đã thêm phản hồi AI vào lịch sử và lưu, tổng số tin nhắn: ${chatHistory.length}`, 2);
+            }
+          }
         } else if (data.script && !data.message) {
           // Nếu không có message nhưng có script, hiển thị một thông báo chung
-          console.log('\nAI đã tạo một script để giải quyết yêu cầu của bạn.\n');
+          const scriptMessage = 'AI đã tạo một script để giải quyết yêu cầu của bạn.';
+          console.log(`\n${scriptMessage}\n`);
+          
+          // Chỉ thêm phản hồi vào lịch sử nếu API không trả về history
+          if (!response.history) {
+            // Thêm phản hồi của AI vào lịch sử với thông báo chung
+            chatHistory = addMessage('assistant', scriptMessage, chatHistory);
+            
+            // Lưu lịch sử chat
+            await saveChatHistory(chatHistory, false);
+            
+            if (config.DEBUG) {
+              debugLog(`Đã thêm thông báo script vào lịch sử và lưu, tổng số tin nhắn: ${chatHistory.length}`, 2);
+            }
+          }
         }
         
         // Kiểm tra xem có script để thực thi không
@@ -472,7 +693,7 @@ async function chatMode() {
                     process.stdin.setEncoding('utf8');
                     process.stdin.on('data', (data) => {
                       const char = data.toString().trim().toLowerCase().charAt(0);
-                      process.stdout.write(char + '\\n');
+                      process.stdout.write(char + '\n');
                       process.exit(char === 'y' ? 0 : 1);
                     });
                   `], { stdio: 'inherit' });
@@ -507,10 +728,12 @@ async function chatMode() {
                   try {
                     processingLog(`Đang cài đặt thư viện "${pkg}"...`);
                     const { execSync } = require('child_process');
+                    debugLog(`Thực thi lệnh: npm install ${pkg}`, 2);
                     execSync(`npm install ${pkg}`, { stdio: 'inherit' });
                     successLog(`Đã cài đặt thư viện "${pkg}" thành công`);
                   } catch (error) {
                     errorLog(`Lỗi khi cài đặt thư viện "${pkg}": ${error.message}`);
+                    debugLog(`Chi tiết lỗi: ${error.stack}`, 3);
                     infoLog('Tiếp tục mà không cài đặt thư viện.');
                   }
                 } else {
@@ -542,7 +765,7 @@ async function chatMode() {
               process.stdin.setEncoding('utf8');
               process.stdin.on('data', (data) => {
                 const char = data.toString().trim().toLowerCase().charAt(0);
-                process.stdout.write(char + '\\n');
+                process.stdout.write(char + '\n');
                 process.exit(char === 'y' ? 0 : 1);
               });
             `], { stdio: 'inherit' });
@@ -583,6 +806,7 @@ async function chatMode() {
             
             // Thực thi file
             await executeFile(filePath, type, '', description);
+            debugLog(`Đã thực thi file ${filePath}`, 1);
           }
         } else if (data.script && data.action === 'create') {
           // Xử lý action create
@@ -608,7 +832,7 @@ async function chatMode() {
               process.stdin.setEncoding('utf8');
               process.stdin.on('data', (data) => {
                 const char = data.toString().trim().toLowerCase().charAt(0);
-                process.stdout.write(char + '\\n');
+                process.stdout.write(char + '\n');
                 process.exit(char === 'y' ? 0 : 1);
               });
             `], { stdio: 'inherit' });
@@ -643,12 +867,14 @@ async function chatMode() {
             try {
               await createFile(filename, content, type);
               successLog(`Đã tạo file ${filename}`);
+              debugLog(`Nội dung file: ${content.substring(0, 100)}...`, 3);
               
               if (description) {
                 infoLog(description);
               }
             } catch (error) {
               errorLog(`Lỗi khi tạo file: ${error.message}`);
+              debugLog(`Chi tiết lỗi: ${error.stack}`, 2);
             }
           } else {
             infoLog('Bạn đã từ chối tạo file');
@@ -665,7 +891,7 @@ async function chatMode() {
   askQuestion();
 }
 
-// Chế độ dev
+// Chế độ phát triển
 async function devMode() {
   infoLog('Bắt đầu chế độ phát triển hệ thống (nhập "help" để xem hướng dẫn, "exit" để thoát)');
   
@@ -674,8 +900,12 @@ async function devMode() {
     output: process.stdout
   });
   
-  // Khởi tạo lịch sử trò chuyện
-  const chatHistory = [];
+  // Khởi tạo lịch sử trò chuyện từ file
+  let chatHistory = []; // await readChatHistory(true);
+  
+  if (config.DEBUG) {
+    debugLog(`Đã tải ${chatHistory.length} tin nhắn từ lịch sử chat`, 2);
+  }
   
   const askQuestion = () => {
     rl.question('dev> ', async (input) => {
@@ -695,6 +925,7 @@ async function devMode() {
       // Nếu người dùng nhập đúng từ "clear" thì xóa lịch sử chat
       if (input.trim().toLowerCase() === 'clear') {
         await clearChatHistory(true);
+        chatHistory = [];
         infoLog('Đã xóa lịch sử chat.');
         askQuestion();
         return;
@@ -703,6 +934,13 @@ async function devMode() {
       // Hiển thị thông báo đang xử lý
       processingLog('AI đang phản hồi...');
       
+      // Thêm tin nhắn của người dùng vào lịch sử
+      chatHistory = addMessage('user', input, chatHistory);
+      
+      if (config.DEBUG) {
+        debugLog(`Đã thêm tin nhắn người dùng vào lịch sử, tổng số tin nhắn: ${chatHistory.length}`, 2);
+      }
+      
       // Gửi yêu cầu và lấy phản hồi
       const response = await handleChat(input, config, true, chatHistory);
       
@@ -710,7 +948,7 @@ async function devMode() {
       process.stdout.write('\x1b[1A\x1b[2K');
       
       if (config.DEBUG) {
-        debugLog(`Phản hồi đầy đủ: ${JSON.stringify(response)}`);
+        debugLog(`Phản hồi đầy đủ: ${JSON.stringify(response)}`, 2);
       }
       
       // Xử lý phản hồi theo định dạng mới
@@ -718,12 +956,49 @@ async function devMode() {
         // Định dạng mới trả về trực tiếp từ API
         const data = response.hasOwnProperty('data') ? response.data : response;
         
+        // Nếu API trả về history, cập nhật lịch sử chat
+        if (response.history && Array.isArray(response.history)) {
+          chatHistory = response.history;
+          if (config.DEBUG) {
+            debugLog(`Cập nhật lịch sử chat từ API, tổng số tin nhắn: ${chatHistory.length}`, 2);
+          }
+          // Lưu lịch sử chat ngay lập tức
+          await saveChatHistory(chatHistory, true);
+        }
+        
         // Hiển thị message nếu có
         if (data.message) {
           console.log(`\n${data.message}\n`);
+          
+          // Chỉ thêm phản hồi vào lịch sử nếu API không trả về history
+          if (!response.history) {
+            // Thêm phản hồi của AI vào lịch sử
+            chatHistory = addMessage('assistant', data.message, chatHistory);
+            
+            // Lưu lịch sử chat
+            await saveChatHistory(chatHistory, true);
+            
+            if (config.DEBUG) {
+              debugLog(`Đã thêm phản hồi AI vào lịch sử và lưu, tổng số tin nhắn: ${chatHistory.length}`, 2);
+            }
+          }
         } else if (data.script && !data.message) {
           // Nếu không có message nhưng có script, hiển thị một thông báo chung
-          console.log('\nAI đã tạo một script để giải quyết yêu cầu của bạn.\n');
+          const scriptMessage = 'AI đã tạo một script để giải quyết yêu cầu của bạn.';
+          console.log(`\n${scriptMessage}\n`);
+          
+          // Chỉ thêm phản hồi vào lịch sử nếu API không trả về history
+          if (!response.history) {
+            // Thêm phản hồi của AI vào lịch sử với thông báo chung
+            chatHistory = addMessage('assistant', scriptMessage, chatHistory);
+            
+            // Lưu lịch sử chat
+            await saveChatHistory(chatHistory, true);
+            
+            if (config.DEBUG) {
+              debugLog(`Đã thêm thông báo script vào lịch sử và lưu, tổng số tin nhắn: ${chatHistory.length}`, 2);
+            }
+          }
         }
         
         // Kiểm tra xem có script để thực thi không
@@ -761,7 +1036,7 @@ async function devMode() {
                     process.stdin.setEncoding('utf8');
                     process.stdin.on('data', (data) => {
                       const char = data.toString().trim().toLowerCase().charAt(0);
-                      process.stdout.write(char + '\\n');
+                      process.stdout.write(char + '\n');
                       process.exit(char === 'y' ? 0 : 1);
                     });
                   `], { stdio: 'inherit' });
@@ -796,10 +1071,12 @@ async function devMode() {
                   try {
                     processingLog(`Đang cài đặt thư viện "${pkg}"...`);
                     const { execSync } = require('child_process');
+                    debugLog(`Thực thi lệnh: npm install ${pkg}`, 2);
                     execSync(`npm install ${pkg}`, { stdio: 'inherit' });
                     successLog(`Đã cài đặt thư viện "${pkg}" thành công`);
                   } catch (error) {
                     errorLog(`Lỗi khi cài đặt thư viện "${pkg}": ${error.message}`);
+                    debugLog(`Chi tiết lỗi: ${error.stack}`, 3);
                     infoLog('Tiếp tục mà không cài đặt thư viện.');
                   }
                 } else {
@@ -831,7 +1108,7 @@ async function devMode() {
               process.stdin.setEncoding('utf8');
               process.stdin.on('data', (data) => {
                 const char = data.toString().trim().toLowerCase().charAt(0);
-                process.stdout.write(char + '\\n');
+                process.stdout.write(char + '\n');
                 process.exit(char === 'y' ? 0 : 1);
               });
             `], { stdio: 'inherit' });
@@ -872,6 +1149,7 @@ async function devMode() {
             
             // Thực thi file
             await executeFile(filePath, type, '', description);
+            debugLog(`Đã thực thi file ${filePath}`, 1);
           }
         } else if (data.script && data.action === 'create') {
           // Xử lý action create
@@ -897,7 +1175,7 @@ async function devMode() {
               process.stdin.setEncoding('utf8');
               process.stdin.on('data', (data) => {
                 const char = data.toString().trim().toLowerCase().charAt(0);
-                process.stdout.write(char + '\\n');
+                process.stdout.write(char + '\n');
                 process.exit(char === 'y' ? 0 : 1);
               });
             `], { stdio: 'inherit' });
@@ -932,12 +1210,14 @@ async function devMode() {
             try {
               await createFile(filename, content, type);
               successLog(`Đã tạo file ${filename}`);
+              debugLog(`Nội dung file: ${content.substring(0, 100)}...`, 3);
               
               if (description) {
                 infoLog(description);
               }
             } catch (error) {
               errorLog(`Lỗi khi tạo file: ${error.message}`);
+              debugLog(`Chi tiết lỗi: ${error.stack}`, 2);
             }
           } else {
             infoLog('Bạn đã từ chối tạo file');
@@ -1010,9 +1290,12 @@ async function loadConfig() {
       API_URL: userConfig.API_URL || envConfig.API_URL || 'http://localhost:3000/api/agent',
       SHELL_DIR: userConfig.SHELL_DIR || envConfig.SHELL_DIR || './src/shell',
       DEBUG: userConfig.DEBUG !== undefined ? userConfig.DEBUG : (envConfig.DEBUG === 'true' || false),
+      DEBUG_LEVEL: userConfig.DEBUG_LEVEL !== undefined ? userConfig.DEBUG_LEVEL : (envConfig.DEBUG_LEVEL || 1),
+      FIRST_REQUEST: true,
       OPENAI_API_KEY: userConfig.OPENAI_API_KEY || envConfig.OPENAI_API_KEY || '',
       API_KEY: userConfig.API_KEY || envConfig.API_KEY || '',
-      MODEL: userConfig.MODEL || envConfig.MODEL || 'gpt-4'
+      MODEL: userConfig.MODEL || envConfig.MODEL || 'gpt-4',
+      RETURN_TYPE: userConfig.RETURN_TYPE || envConfig.RETURN_TYPE || 'xml' // Mặc định 'xml' cho shellai.js
     };
   } catch (error) {
     // Nếu có lỗi, trả về cấu hình mặc định
@@ -1020,9 +1303,12 @@ async function loadConfig() {
       API_URL: 'http://localhost:3000/api/agent',
       SHELL_DIR: './src/shell',
       DEBUG: false,
+      DEBUG_LEVEL: 1,
+      FIRST_REQUEST: true,
       OPENAI_API_KEY: '',
       API_KEY: '',
-      MODEL: 'gpt-4'
+      MODEL: 'gpt-4',
+      RETURN_TYPE: 'xml' // Mặc định 'xml' cho shellai.js
     };
   }
 }
@@ -1065,6 +1351,12 @@ async function configMode() {
         validate: (value) => value === 'true' || value === 'false'
       },
       {
+        key: 'DEBUG_LEVEL',
+        description: 'Cấp độ chi tiết của debug',
+        default: 1,
+        validate: (value) => value >= 1 && value <= 3
+      },
+      {
         key: 'OPENAI_API_KEY',
         description: 'OpenAI API Key',
         default: '',
@@ -1078,9 +1370,15 @@ async function configMode() {
       },
       {
         key: 'MODEL',
-        description: 'Model AI (gpt-4, gpt-3.5-turbo, ...)',
+        description: 'Model AI sử dụng (gpt-4, gpt-3.5-turbo, ...)',
         default: 'gpt-4',
         validate: (value) => true
+      },
+      {
+        key: 'RETURN_TYPE',
+        description: 'Định dạng phản hồi (json, xml)',
+        default: 'xml',
+        validate: (value) => value === 'json' || value === 'xml'
       }
     ];
     
@@ -1113,6 +1411,8 @@ async function configMode() {
       // Xử lý giá trị đặc biệt
       if (item.key === 'DEBUG') {
         currentConfig[item.key] = answer.toLowerCase() === 'true';
+      } else if (item.key === 'DEBUG_LEVEL') {
+        currentConfig[item.key] = parseInt(answer, 10);
       } else {
         currentConfig[item.key] = answer;
       }
@@ -1121,9 +1421,11 @@ async function configMode() {
       if (item.key === 'API_URL') config.API_URL = currentConfig[item.key];
       if (item.key === 'SHELL_DIR') config.SHELL_DIR = currentConfig[item.key];
       if (item.key === 'DEBUG') config.DEBUG = currentConfig[item.key];
+      if (item.key === 'DEBUG_LEVEL') config.DEBUG_LEVEL = currentConfig[item.key];
       if (item.key === 'OPENAI_API_KEY') config.OPENAI_API_KEY = currentConfig[item.key];
       if (item.key === 'API_KEY') config.API_KEY = currentConfig[item.key];
       if (item.key === 'MODEL') config.MODEL = currentConfig[item.key];
+      if (item.key === 'RETURN_TYPE') config.RETURN_TYPE = currentConfig[item.key];
     }
     
     // Lưu cấu hình
@@ -1156,9 +1458,11 @@ Các khóa cấu hình:
   API_URL            - URL của API server (mặc định: http://localhost:3000/api/agent)
   SHELL_DIR          - Thư mục chứa các script (mặc định: ./src/shell)
   DEBUG              - Chế độ debug (true/false)
-  OPENAI_API_KEY     - OpenAI API Key để gửi yêu cầu trực tiếp đến OpenAI
-  API_KEY            - API Key để xác thực với API server
+  DEBUG_LEVEL        - Cấp độ chi tiết của debug
+  OPENAI_API_KEY     - OpenAI API Key
+  API_KEY            - API Key
   MODEL              - Model AI sử dụng (gpt-4, gpt-3.5-turbo, ...)
+  RETURN_TYPE        - Định dạng phản hồi (json, xml)
         `);
         askQuestion();
         return;
@@ -1191,6 +1495,8 @@ Các khóa cấu hình:
         // Xử lý giá trị đặc biệt
         if (key === 'DEBUG') {
           currentConfig[key] = value.toLowerCase() === 'true';
+        } else if (key === 'DEBUG_LEVEL') {
+          currentConfig[key] = parseInt(value, 10);
         } else {
           currentConfig[key] = value;
         }
@@ -1204,9 +1510,11 @@ Các khóa cấu hình:
           if (key === 'API_URL') config.API_URL = value;
           if (key === 'SHELL_DIR') config.SHELL_DIR = value;
           if (key === 'DEBUG') config.DEBUG = value.toLowerCase() === 'true';
+          if (key === 'DEBUG_LEVEL') config.DEBUG_LEVEL = value;
           if (key === 'OPENAI_API_KEY') config.OPENAI_API_KEY = value;
           if (key === 'API_KEY') config.API_KEY = value;
           if (key === 'MODEL') config.MODEL = value;
+          if (key === 'RETURN_TYPE') config.RETURN_TYPE = value;
         }
         
         askQuestion();
@@ -1232,6 +1540,7 @@ async function main() {
   if (savedConfig.API_URL) config.API_URL = savedConfig.API_URL;
   if (savedConfig.SHELL_DIR) config.SHELL_DIR = savedConfig.SHELL_DIR;
   if (savedConfig.DEBUG !== undefined) config.DEBUG = savedConfig.DEBUG;
+  if (savedConfig.DEBUG_LEVEL !== undefined) config.DEBUG_LEVEL = savedConfig.DEBUG_LEVEL;
   if (savedConfig.OPENAI_API_KEY) config.OPENAI_API_KEY = savedConfig.OPENAI_API_KEY;
   if (savedConfig.API_KEY) config.API_KEY = savedConfig.API_KEY;
   if (savedConfig.MODEL) config.MODEL = savedConfig.MODEL;
@@ -1239,10 +1548,13 @@ async function main() {
   // Cập nhật cấu hình từ tham số dòng lệnh
   if (args.debug) {
     config.DEBUG = true;
+    if (args.debugLevel) {
+      config.DEBUG_LEVEL = args.debugLevel;
+    }
   }
   
   if (config.DEBUG) {
-    debugLog('Chế độ debug được bật');
+    debugLog(`Chế độ debug được bật (cấp độ: ${config.DEBUG_LEVEL})`);
   }
   
   // Kiểm tra curl đã được cài đặt chưa
@@ -1294,109 +1606,51 @@ async function main() {
           : `Kiểm tra trạng thái các dịch vụ: ${services}`;
         
         // Gửi yêu cầu và xử lý phản hồi
-        const checkResponse = await processRequest(checkIssue, 'run', 'js', '', config);
+        const checkResponse = await processRequest(checkIssue, 'run', 'sh', '', config);
         await autoSolve(checkResponse, args);
         break;
         
       case 'create':
-        if (args.params.length < 2 || args.params[0] !== 'file') {
-          errorLog('Cú pháp không đúng cho lệnh create');
+        if (args.params.length < 2) {
+          errorLog('Thiếu tên file và nội dung');
           showUsage();
           process.exit(1);
         }
         
-        const filename = args.params[1];
+        const filename = args.params[0];
+        const content = args.params.slice(1).join(' ');
         
         // Tạo yêu cầu
         const createIssue = args.message
-          ? `Tạo file ${filename}. Mô tả: ${args.message}`
-          : `Tạo file ${filename}`;
+          ? `Tạo file: ${filename}. Nội dung: ${content}. Mô tả: ${args.message}`
+          : `Tạo file: ${filename}. Nội dung: ${content}`;
         
         // Gửi yêu cầu và xử lý phản hồi
-        const createResponse = await processRequest(createIssue, 'create', 'file', filename, config);
+        const createResponse = await processRequest(createIssue, 'run', 'sh', '', config);
         await autoSolve(createResponse, args);
         break;
         
       case 'chat':
-        // Khởi tạo lịch sử trò chuyện
-        const chatHistory = [];
-        
-        // Nếu có message, gửi ngay và hiển thị phản hồi
-        if (args.message) {
-          processingLog('AI đang phản hồi...');
-          const chatResponse = await handleChat(args.message, config, false, chatHistory);
-          process.stdout.write('\x1b[1A\x1b[2K'); // Xóa dòng "AI đang phản hồi..."
-          
-          if (config.DEBUG) {
-            debugLog(`Phản hồi đầy đủ: ${JSON.stringify(chatResponse)}`);
-          }
-          
-          if (chatResponse) {
-            // Định dạng mới trả về trực tiếp từ API
-            const data = chatResponse.hasOwnProperty('data') ? chatResponse.data : chatResponse;
-            
-            if (data.message) {
-              console.log(`\n${data.message}\n`);
-            } else {
-              console.log(`\n${JSON.stringify(data)}\n`);
-            }
-          } else {
-            errorLog(`Lỗi: Không thể nhận phản hồi từ AI`);
-          }
-        }
-        
-        // Bắt đầu chế độ chat
         await chatMode();
         break;
         
       case 'dev':
-        // Bắt đầu chế độ dev
         await devMode();
         break;
         
       case 'config':
-        // Bắt đầu chế độ cấu hình
         await configMode();
         break;
         
-      case 'help':
-        showUsage();
-        process.exit(0);
-        break;
-        
-      case '':
-        if (!args.message) {
-          errorLog('Thiếu lệnh hoặc thông điệp');
-          showUsage();
-          process.exit(1);
-        }
-        
-        // Gửi yêu cầu và xử lý phản hồi
-        const directResponse = await processRequest(args.message, 'run', '', '', config);
-        await autoSolve(directResponse, args);
-        break;
-        
       default:
-        // Xử lý các lệnh tùy chỉnh
-        const customCommand = `${args.command} ${args.params.join(' ')}`;
-        
-        const customIssue = args.message
-          ? `${customCommand} : ${args.message}`
-          : customCommand;
-        
-        // Gửi yêu cầu và xử lý phản hồi
-        const customResponse = await processRequest(customIssue, 'run', '', '', config);
-        await autoSolve(customResponse, args);
-        break;
+        errorLog(`Lệnh không hợp lệ: ${args.command}`);
+        showUsage();
+        process.exit(1);
     }
   } catch (error) {
-    errorLog(`Lỗi: ${error.message}`);
+    errorLog(`Lỗi khi xử lý lệnh: ${error.message}`);
     process.exit(1);
   }
 }
 
-// Chạy hàm chính
-main().catch(error => {
-  errorLog(`Lỗi không xử lý được: ${error.message}`);
-  process.exit(1);
-}); 
+main();

@@ -1,0 +1,134 @@
+# BẢN ĐỒ ACTION TRONG SHELL.AI
+
+## 1. ACTION "run"
+- **Mô tả**: Tạo và thực thi script
+- **Trường dữ liệu**:
+  - message: Thông báo giải thích về script
+  - script: Object chứa thông tin script
+    - filename: Tên file script
+    - content: Nội dung script
+    - type: Loại script (sh, js, py, php)
+    - description: Mô tả tác dụng
+    - prepare: Lệnh cài đặt dependencies
+  - confirm_message: Thông điệp xác nhận thực thi (tùy chọn)
+- **Xử lý**: 
+  - Client hiển thị confirm_message (nếu có) để xác nhận
+  - Tạo file script
+  - Thực thi script
+  - Gửi output về API để phân tích tiếp
+- **Khi nào sử dụng**:
+  - Sử dụng cho các script cần thực thi để thực hiện một tác vụ
+  - Các loại script: sh, js, py, php, và các ngôn ngữ script khác
+  - Yêu cầu kiểm tra hệ thống, cấu hình, tài nguyên
+  - Yêu cầu tự động hóa, xử lý dữ liệu, tương tác với hệ thống
+
+## 2. ACTION "analyze"
+- **Mô tả**: Phân tích output từ script
+- **Trường dữ liệu**:
+  - message: Kết quả phân tích
+  - next_action: Action tiếp theo (nếu cần)
+- **Xử lý**:
+  - API phân tích output
+  - Quyết định action tiếp theo
+  - Trả về kết quả phân tích
+
+## 3. ACTION "create"
+- **Mô tả**: Tạo file nội dung tĩnh trực tiếp
+- **Trường dữ liệu**:
+  - message: Thông báo về file được tạo
+  - script: Object chứa thông tin file
+    - filename: Tên file
+    - content: Nội dung file
+    - type: Loại file
+    - description: Mô tả nội dung file (tùy chọn)
+    - KHÔNG có trường prepare (không cần cài đặt dependencies)
+- **Xử lý**:
+  - Client tạo file trực tiếp
+  - Không sinh script trung gian
+  - Không cần xác nhận người dùng
+  - Không thực thi file sau khi tạo
+- **Khi nào sử dụng**:
+  - Sử dụng cho các file nội dung tĩnh không cần logic xử lý phức tạp
+  - Bắt buộc sử dụng cho các loại file sau:
+    - HTML: Trang web, giao diện người dùng
+    - TXT: File văn bản thuần túy
+    - JSON: Dữ liệu cấu trúc JSON
+    - XML: Dữ liệu cấu trúc XML
+    - CSV: Dữ liệu bảng tính
+    - MD/Markdown: Tài liệu có định dạng
+    - Các file nội dung tĩnh khác
+  - KHÔNG sử dụng action "run" để tạo các file nêu trên
+  - KHÔNG sử dụng script trung gian để tạo file nội dung tĩnh
+
+## 4. ACTION "done"
+- **Mô tả**: Kết thúc quá trình xử lý
+- **Trường dữ liệu**:
+  - message: Thông báo kết luận cuối cùng
+- **Xử lý**:
+  - Kết thúc luồng xử lý
+  - Hiển thị kết luận cho người dùng
+
+## 5. ACTION "chat"/"show"
+- **Mô tả**: Trả lời/ hiển thị thông tin
+- **Trường dữ liệu**:
+  - message: Nội dung trả lời
+- **Xử lý**:
+  - Hiển thị thông tin cho người dùng
+  - Không thực thi script hay tạo file
+
+## 6. ACTION "fix"
+- **Mô tả**: Sửa lỗi script đã thực thi
+- **Trường dữ liệu**:
+  - message: Thông báo về lỗi và cách sửa
+  - script: Object chứa thông tin script đã sửa
+    - filename: Tên file script
+    - content: Nội dung script đã sửa
+    - type: Loại script
+    - description: Mô tả về lỗi và cách sửa
+  - error: Thông tin chi tiết về lỗi gặp phải
+- **Xử lý**:
+  - Phân tích lỗi từ output trước đó
+  - Sửa script dựa trên lỗi
+  - Trả về script đã sửa để thực thi lại
+
+## 7. ACTION "check"
+- **Mô tả**: Kiểm tra trạng thái hệ thống/service
+- **Trường dữ liệu**:
+  - message: Thông báo về việc kiểm tra
+  - check_type: Loại kiểm tra (system, service, process)
+  - command: Lệnh kiểm tra cần thực thi
+  - expected_result: Kết quả mong đợi
+- **Xử lý**:
+  - Thực thi lệnh kiểm tra
+  - So sánh kết quả với expected_result
+  - Trả về kết quả kiểm tra
+
+## 8. ACTION "install"
+- **Mô tả**: Cài đặt dependencies
+- **Trường dữ liệu**:
+  - message: Thông báo về việc cài đặt
+  - dependencies: Danh sách dependencies cần cài
+  - package_manager: Loại package manager (npm, pip, composer)
+  - version: Phiên bản cần cài (tùy chọn)
+- **Xử lý**:
+  - Kiểm tra dependencies đã cài chưa
+  - Cài đặt dependencies còn thiếu
+  - Xác nhận cài đặt thành công
+
+## Quy tắc quyết định:
+- Nếu file chỉ chứa nội dung tĩnh và không cần logic xử lý: dùng "create"
+- Nếu file cần thực thi để thực hiện một tác vụ: dùng "run"
+- Nếu yêu cầu kiểm tra hệ thống, cấu hình, tài nguyên: dùng "run"
+- Nếu chỉ trả lời câu hỏi, không tạo file: dùng "chat"
+
+## Lưu ý quan trọng:
+1. Mỗi action phải có trường "message" để giải thích
+2. Action "run" có thể có confirm_message để xác nhận
+3. Action "create" chỉ tạo file, không sinh script
+4. Action "analyze" luôn có next_action để chỉ định bước tiếp
+5. Action "done" kết thúc toàn bộ quá trình xử lý
+6. Action "chat"/"show" chỉ hiển thị thông tin, không thực thi
+7. Action "fix" chỉ được gọi khi có lỗi từ action "run"
+8. Action "check" không tạo script mới, chỉ thực thi lệnh kiểm tra
+9. Action "install" nên được gọi trước action "run" nếu cần dependencies
+10. Yêu cầu tạo file HTML, txt, markdown, JSON, XML, CSV PHẢI dùng action "create", KHÔNG dùng "run" 

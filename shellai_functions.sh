@@ -10,6 +10,7 @@ DEBUG=false
 OPENAI_API_KEY=""
 API_KEY=""
 MODEL="gpt-4"
+RETURN_TYPE="json" # Thêm mặc định cho kiểu dữ liệu trả về
 
 # Hàm debug log
 debug_log() {
@@ -197,6 +198,7 @@ get_system_info() {
 send_api_request() {
   local endpoint="$1"
   local data="$2"
+  local return_type="${3:-json}" # Thêm tham số return_type, mặc định là "json"
   
   # Tạo headers với API keys
   local headers="-H \"Content-Type: application/json\""
@@ -212,19 +214,47 @@ send_api_request() {
   if [ -n "$MODEL" ]; then
     headers+=" -H \"model: $MODEL\""
   fi
+  
+  # Thêm header return_type để API trả về định dạng chỉ định
+  headers+=" -H \"return_type: $return_type\""
+  
   debug_log "Gửi yêu cầu đến API server"
   debug_log "POST $API_URL/$endpoint"
   debug_log "Headers: $headers"
   debug_log "Body: $data"
+  debug_log "Return Type: $return_type"
   
   # Thực hiện request với headers
   response=$(eval "curl -s -X POST \"$API_URL/$endpoint\" $headers -d '$data' --max-time 30")
   
   debug_log "Nhận phản hồi: $response"
   
-  # Kiểm tra nếu jq có sẵn để xử lý JSON
-  if command -v jq &> /dev/null && [[ "$response" == *"\"script\""* && "$response" == *"\"content\""* ]]; then
-    debug_log "Phát hiện nội dung script trong phản hồi, xử lý các ký tự escape"
+  # Kiểm tra nếu phản hồi là XML
+  if [[ "$response" == *"<response>"* && "$response" == *"<script>"* && "$response" == *"<content>"* ]]; then
+    debug_log "Phát hiện nội dung script trong phản hồi XML, xử lý các ký tự escape"
+    
+    # Nếu có xmllint, sử dụng để trích xuất content
+    if command -v xmllint &> /dev/null; then
+      # Trích xuất nội dung script
+      local script_content=$(echo "$response" | xmllint --xpath "string(//response/script/content)" - 2>/dev/null)
+      
+      if [[ -n "$script_content" ]]; then
+        # Xử lý script content
+        local processed_content=$(process_script_content "$script_content")
+        
+        # Thay thế nội dung trong XML
+        # Sử dụng sed để thay thế, đảm bảo xử lý đúng với các ký tự đặc biệt
+        local escaped_content=$(echo "$processed_content" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'"'"'/\&apos;/g')
+        response=$(echo "$response" | sed -e "s|<content>.*</content>|<content>$escaped_content</content>|")
+        
+        debug_log "Đã xử lý nội dung script trong phản hồi XML"
+      fi
+    else
+      debug_log "Không có xmllint để xử lý XML. Nội dung script sẽ được xử lý khi tạo file."
+    fi
+  # Kiểm tra nếu phản hồi là JSON (tương thích ngược)
+  elif command -v jq &> /dev/null && [[ "$response" == *"\"script\""* && "$response" == *"\"content\""* ]]; then
+    debug_log "Phát hiện nội dung script trong phản hồi JSON, xử lý các ký tự escape"
     
     # Trích xuất và xử lý nội dung script
     local script_content=$(echo "$response" | jq -r '.script.content // empty')
@@ -236,11 +266,11 @@ send_api_request() {
       # Tạo phản hồi mới với nội dung đã xử lý
       response=$(echo "$response" | jq --arg content "$processed_content" '.script.content = $content')
       
-      debug_log "Đã xử lý nội dung script trong phản hồi"
+      debug_log "Đã xử lý nội dung script trong phản hồi JSON"
     fi
   elif [[ "$response" == *"\"script\""* && "$response" == *"\"content\""* ]]; then
     # Nếu không có jq, giữ nguyên phản hồi nhưng thông báo để xử lý ở bước tạo file
-    debug_log "Không có jq để xử lý JSON. Nội dung script sẽ được xử lý khi tạo file."
+    debug_log "Không có công cụ để xử lý phản hồi. Nội dung script sẽ được xử lý khi tạo file."
   fi
   
   echo "$response"
@@ -278,6 +308,7 @@ process_request() {
   local action="$2"
   local type="$3"
   local filename="$4"
+  local return_type="${5:-json}" # Thêm tham số return_type, mặc định là "json"
   
   # Thu thập thông tin hệ thống
   system_info=$(get_system_info)
@@ -299,11 +330,15 @@ process_request() {
     \"filename\": \"$filename\""
   fi
   
+  # Thêm return_type vào request data
+  request_data+=",
+    \"return_type\": \"$return_type\""
+  
   request_data+="
   }"
   
   # Gửi request
-  response=$(send_api_request "process" "$request_data")
+  response=$(send_api_request "process" "$request_data" "$return_type")
   
   # Trả về response
   echo "$response"
@@ -314,6 +349,7 @@ fix_script_error() {
   local issue="$1"
   local error_message="$2"
   local script_content="$3"
+  local return_type="${4:-json}" # Thêm tham số return_type, mặc định là "json"
   
   # Thu thập thông tin hệ thống
   system_info=$(get_system_info)
@@ -324,53 +360,115 @@ fix_script_error() {
     \"error\": \"$error_message\",
     \"script\": \"$script_content\",
     \"suggest_type\": \"sh\",
-    \"system_info\": $system_info
+    \"system_info\": $system_info,
+    \"return_type\": \"$return_type\"
   }"
   
   # Gửi request
-  response=$(send_api_request "fix" "$request_data")
+  response=$(send_api_request "fix" "$request_data" "$return_type")
   
   # Trả về response
   echo "$response"
 }
 
-# Hàm xử lý chat
+# Hàm xử lý phản hồi cho chế độ dev
+handle_dev_response() {
+  local response="$1"
+  local user_input="$2"
+  local should_display="${3:-true}"
+  
+  # Kiểm tra xem phản hồi có phải XML không
+  if [[ "$response" == *"<response>"* ]]; then
+    # Xử lý XML
+    local message action
+    message=$(xml_extract "$response" "string(//response/message)" "")
+    action=$(xml_extract "$response" "string(//response/action)" "")
+    
+    # Hiển thị thông báo nếu cần
+    if [ "$should_display" = "true" ] && [ -n "$message" ]; then
+      info_log "$message"
+    fi
+    
+    # Nếu action là error, dừng xử lý
+    if [[ "$action" == "error" ]]; then
+      return 0
+    fi
+    
+    # Xử lý auto_solve nếu cần
+    if [ "$should_display" = "true" ]; then
+      auto_solve "$response" "$user_input" 1
+    fi
+    return 0
+  elif echo "$response" | jq '.' > /dev/null 2>&1; then
+    # Phản hồi là JSON hợp lệ, xử lý
+    local message action
+    
+    message=$(echo "$response" | jq -r '.message // ""')
+    action=$(echo "$response" | jq -r '.action // ""')
+    
+    # Hiển thị thông báo nếu cần
+    if [ "$should_display" = "true" ] && [ -n "$message" ]; then
+      info_log "$message"
+    fi
+    
+    # Auto solve nếu cần
+    if [ "$should_display" = "true" ]; then
+      auto_solve "$response" "$user_input" 1
+    fi
+    return 0
+  else
+    # Phản hồi không phải XML hợp lệ hoặc JSON hợp lệ
+    error_log "Phản hồi không hợp lệ từ API"
+    debug_log "Phản hồi nhận được: $response"
+    return 1
+  fi
+}
+
+# Hàm xử lý cho chế độ dev
 handle_chat() {
   local message="$1"
-  local dev_mode="$2"
-  local history="$3"
+  local suggest_type="$2"
+  local chat_history="$3"
+  local return_type="${4:-json}" # Thêm tham số return_type, mặc định là "json"
+  local should_display="${5:-false}" # Thêm tham số should_display, mặc định là "false"
+  
+  # Kiểm tra xem có phải chế độ dev không
+  local mode="chat"
+  if [[ "${suggest_type}" == "true" ]]; then
+    mode="dev"
+  fi
   
   # Thu thập thông tin hệ thống
+  local system_info
   system_info=$(get_system_info)
   
-  # Tạo JSON data gửi đi
+  # Chuẩn bị dữ liệu request
   request_data="{
     \"message\": \"$message\",
     \"suggest_type\": \"sh\",
-    \"system_info\": $system_info"
-  
-  if [ "$dev_mode" = "true" ]; then
-    request_data+=",
-    \"mode\": \"dev\""
-  else
-    request_data+=",
-    \"mode\": \"chat\""
-  fi
-  
-  if [ -n "$history" ]; then
-    request_data+=",
-    \"history\": $history"
-  fi
-  
-  request_data+="
+    \"system_info\": $system_info,
+    \"mode\": \"$mode\",
+    \"chat_history\": $chat_history,
+    \"return_type\": \"$return_type\"
   }"
   
   debug_log "Request data chat: $request_data"
   
-  # Gửi request
-  response=$(send_api_request "chat" "$request_data")
+  # Gửi request và nhận phản hồi
+  response=$(send_api_request "chat" "$request_data" "$return_type")
   
-  # Trả về response
+  # Xử lý lỗi kết nối
+  if [ -z "$response" ]; then
+    error_log "Không thể kết nối đến API server. Vui lòng kiểm tra kết nối mạng hoặc địa chỉ API server."
+    return 1
+  fi
+  
+  # Xử lý phản hồi
+  if [[ "${suggest_type}" == "true" && "$should_display" == "true" ]]; then
+    # Chế độ dev, xử lý phản hồi và hiển thị thông báo
+    handle_dev_response "$response" "$message" "true"
+  fi
+  
   echo "$response"
 }
 
@@ -488,6 +586,7 @@ analyze_file_or_error() {
   local file_path="$1"
   local error_message="$2"
   local context="$3"
+  local return_type="${4:-json}" # Thêm tham số return_type, mặc định là "json"
   
   # Thu thập thông tin hệ thống
   system_info=$(get_system_info)
@@ -521,7 +620,8 @@ analyze_file_or_error() {
   request_data="{
     \"file_path\": \"$file_path\",
     \"suggest_type\": \"sh\",
-    \"system_info\": $system_info"
+    \"system_info\": $system_info,
+    \"return_type\": \"$return_type\""
   
   if [ -n "$file_content_escaped" ]; then
     request_data+=",
@@ -544,7 +644,7 @@ analyze_file_or_error() {
   debug_log "Gửi yêu cầu phân tích file/lỗi"
   
   # Gửi request
-  response=$(send_api_request "analyze" "$request_data")
+  response=$(send_api_request "analyze" "$request_data" "$return_type")
   
   # Trả về response
   echo "$response"
@@ -670,6 +770,7 @@ load_config() {
     config_openai_api_key=$(grep -o '"openai_api_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     config_api_key=$(grep -o '"api_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     config_model=$(grep -o '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    config_return_type=$(grep -o '"return_type"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     
     # Cập nhật biến môi trường nếu có giá trị
     if [ -n "$config_api_url" ]; then
@@ -696,6 +797,10 @@ load_config() {
       MODEL="$config_model"
     fi
     
+    if [ -n "$config_return_type" ]; then
+      RETURN_TYPE="$config_return_type"
+    fi
+    
     debug_log "Đã tải cấu hình từ $CONFIG_FILE"
     debug_log "API_URL=$API_URL"
     debug_log "SHELL_DIR=$SHELL_DIR"
@@ -703,6 +808,7 @@ load_config() {
     debug_log "OPENAI_API_KEY=${OPENAI_API_KEY:0:5}..."
     debug_log "API_KEY=${API_KEY:0:5}..."
     debug_log "MODEL=$MODEL"
+    debug_log "RETURN_TYPE=$RETURN_TYPE"
   else
     debug_log "Không tìm thấy file cấu hình $CONFIG_FILE, sử dụng giá trị mặc định"
   fi
@@ -719,6 +825,7 @@ save_config() {
   local openai_api_key="$4"
   local api_key="$5"
   local model="$6"
+  local return_type="$7"
   
   # Sử dụng giá trị hiện tại nếu không có giá trị mới
   if [ -z "$api_url" ]; then
@@ -745,6 +852,10 @@ save_config() {
     model="$MODEL"
   fi
   
+  if [ -z "$return_type" ]; then
+    return_type="$RETURN_TYPE"
+  fi
+  
   # Tạo JSON và lưu vào file
   echo "{
   \"api_url\": \"$api_url\",
@@ -752,7 +863,8 @@ save_config() {
   \"debug\": $debug,
   \"openai_api_key\": \"$openai_api_key\",
   \"api_key\": \"$api_key\",
-  \"model\": \"$model\"
+  \"model\": \"$model\",
+  \"return_type\": \"$return_type\"
 }" > "$CONFIG_FILE"
   
   success_log "Đã lưu cấu hình vào $CONFIG_FILE"
@@ -764,6 +876,7 @@ save_config() {
   OPENAI_API_KEY="$openai_api_key"
   API_KEY="$api_key"
   MODEL="$model"
+  RETURN_TYPE="$return_type"
   
   # Đảm bảo thư mục shell tồn tại
   mkdir -p "$SHELL_DIR"

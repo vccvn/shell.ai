@@ -13,11 +13,12 @@ function createOpenAIClient() {
 }
 
 /**
- * Gửi prompt đến OpenAI API và nhận phản hồi
+ * Gọi OpenAI API và trả về phản hồi
  * @param {string} prompt - Nội dung yêu cầu
+ * @param {Array} history - Lịch sử chat (tùy chọn)
  * @returns {Promise<object>} - Phản hồi từ OpenAI
  */
-async function getCompletion(prompt) {
+async function getCompletion(prompt, history = []) {
   try {
     // Tạo mới OpenAI client với API key hiện tại
     const openai = createOpenAIClient();
@@ -38,12 +39,26 @@ async function getCompletion(prompt) {
       KHÔNG sử dụng định dạng markdown hoặc code block (\`\`\`) trong phản hồi.
       CHỈ trả về đối tượng JSON thuần túy.`;
     }
-
-    console.log(`Sử dụng model: ${config.openai.model}`);
     
+    // Chuẩn bị tin nhắn cho API
+    let messages = [];
+    
+    // Thêm lịch sử chat nếu có
+    if (Array.isArray(history) && history.length > 0) {
+      // Chuyển đổi lịch sử chat thành định dạng messages của OpenAI API
+      messages = history.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+    }
+    
+    // Thêm prompt hiện tại vào danh sách tin nhắn
+    messages.push({ role: 'user', content: prompt });
+    
+    // Gọi API với messages
     const response = await openai.chat.completions.create({
       model: config.openai.model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: messages,
       temperature: 0.7
     });
 

@@ -39,7 +39,8 @@
     "node-fetch": "^2.7.0",
     "openai": "^4.12.1",
     "os": "^0.1.2",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "xml-js": "^1.6.11"
   },
   "devDependencies": {
     "electron": "^29.1.0",
